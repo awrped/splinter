@@ -132,8 +132,8 @@ int main() {
     }
     if (!decodedFields.empty()) {
         if (const auto indexedField = engine.findField(selectedClassName, decodedFields.front().name)) {
-            std::cout << "lookup field: " << indexedField->decoded.name << " "
-                    << indexedField->decoded.signature << " offset=" << indexedField->decoded.offset << '\n';
+            std::cout << "lookup field: " << indexedField->name << " "
+                    << indexedField->descriptor << " offset=" << indexedField->offset << '\n';
         }
     }
 
@@ -147,7 +147,8 @@ int main() {
                 << splinter::engine::classfile::signatureParser::parseMethod(signature) << '\n';
         if (index == 0) {
             if (const auto indexedMethod = engine.findMethod(selectedClassName, methodName, signature)) {
-                std::cout << "  lookup method[0] 0x" << std::hex << indexedMethod->address << std::dec << '\n';
+                std::cout << "  lookup method[0] 0x" << std::hex << indexedMethod->address << std::dec
+                        << " " << indexedMethod->displaySignature << '\n';
             }
         }
 

@@ -1,5 +1,7 @@
 #include "engine.h"
 
+#include "classfile/descriptorParser.h"
+#include "classfile/signatureParser.h"
 #include "hotspot/classLoaderData.h"
 #include "hotspot/constantPool.h"
 #include "hotspot/instanceKlass.h"
@@ -47,10 +49,10 @@ namespace splinter::engine {
                     classInfo classEntry{};
                     classEntry.address = klass.address();
                     classEntry.name = klass.name(symbolReader);
-                    classEntry.isInstanceKlass = klass.isInstanceKlass();
+                    classEntry.kind = klass.isInstanceKlass() ? classKind::instance : classKind::nonInstance;
                     classEntry.layoutHelper = klass.layoutHelper();
 
-                    if (classEntry.isInstanceKlass) {
+                    if (classEntry.isInstanceKlass()) {
                         hotspot::instanceKlassView instanceKlass(processMemory, vm_, klass.address());
                         classEntry.javaFieldCount = instanceKlass.javaFieldCount();
                         classEntry.totalFieldCount = instanceKlass.totalFieldCount();
@@ -69,8 +71,14 @@ namespace splinter::engine {
                                 methodEntry.classAddress = classEntry.address;
                                 methodEntry.className = classEntry.name;
                                 methodEntry.address = method.address();
+                                methodEntry.constMethodAddress = method.constMethodAddress().value_or(0);
+                                methodEntry.methodDataAddress = method.methodDataAddress().value_or(0);
+                                methodEntry.methodCountersAddress = method.methodCountersAddress().value_or(0);
                                 methodEntry.name = method.name(constantPool, symbolReader);
-                                methodEntry.signature = method.signature(constantPool, symbolReader);
+                                methodEntry.descriptor = method.signature(constantPool, symbolReader);
+                                methodEntry.displaySignature = classfile::signatureParser::parseMethod(
+                                    methodEntry.descriptor);
+                                methodEntry.vtableIndex = method.vtableIndex();
                                 methodEntry.accessFlags = method.accessFlags();
 
                                 methodLookupIndex_[std::format("{}#{}", methodEntry.className, methodEntry.name)]
@@ -78,15 +86,25 @@ namespace splinter::engine {
                                 methodIndex_.push_back(std::move(methodEntry));
                             }
 
-                            for (auto decodedField: instanceKlass.fields(symbolReader, 0)) {
+                            for (const auto &decodedField: instanceKlass.fields(symbolReader, 0)) {
                                 fieldInfo fieldEntry{};
                                 fieldEntry.classAddress = classEntry.address;
                                 fieldEntry.className = classEntry.name;
-                                fieldEntry.decoded = std::move(decodedField);
+                                fieldEntry.index = decodedField.index;
+                                fieldEntry.name = decodedField.name;
+                                fieldEntry.descriptor = decodedField.signature;
+                                fieldEntry.displayType =
+                                        classfile::descriptorParser::parseField(decodedField.signature);
+                                fieldEntry.genericSignature = decodedField.genericSignature;
+                                fieldEntry.offset = decodedField.offset;
+                                fieldEntry.accessFlags = classfile::accessFlags(decodedField.accessFlags);
+                                fieldEntry.flags = decodedField.flags;
+                                fieldEntry.initializerIndex = decodedField.initializerIndex;
+                                fieldEntry.contentionGroup = decodedField.contentionGroup;
 
                                 fieldLookupIndex_[std::format("{}#{}",
                                                               fieldEntry.className,
-                                                              fieldEntry.decoded.name)]
+                                                              fieldEntry.name)]
                                         .push_back(fieldIndex_.size());
                                 fieldIndex_.push_back(std::move(fieldEntry));
                             }
@@ -203,19 +221,29 @@ namespace splinter::engine {
 
     std::optional<methodInfo> engine::findMethod(std::string_view className,
                                                  std::string_view methodName,
-                                                 std::string_view signature) const {
+                                                 std::string_view descriptor) const {
         const auto found = methodLookupIndex_.find(std::format("{}#{}", className, methodName));
         if (found == methodLookupIndex_.end()) {
             return std::nullopt;
         }
 
         for (const auto index: found->second) {
-            if (methodIndex_[index].signature == signature) {
+            if (methodIndex_[index].descriptor == descriptor) {
                 return methodIndex_[index];
             }
         }
 
         return std::nullopt;
+    }
+
+    std::vector<methodInfo> engine::methodsForClass(std::string_view className) const {
+        std::vector<methodInfo> matches;
+        for (const auto &method: methodIndex_) {
+            if (method.className == className) {
+                matches.push_back(method);
+            }
+        }
+        return matches;
     }
 
     std::vector<fieldInfo> engine::findFields(std::string_view className, std::string_view fieldName) const {
@@ -232,6 +260,16 @@ namespace splinter::engine {
         return matches;
     }
 
+    std::vector<fieldInfo> engine::fieldsForClass(std::string_view className) const {
+        std::vector<fieldInfo> matches;
+        for (const auto &field: fieldIndex_) {
+            if (field.className == className) {
+                matches.push_back(field);
+            }
+        }
+        return matches;
+    }
+
     std::optional<fieldInfo> engine::findField(std::string_view className, std::string_view fieldName) const {
         const auto found = fieldLookupIndex_.find(std::format("{}#{}", className, fieldName));
         if (found == fieldLookupIndex_.end() || found->second.empty()) {
@@ -242,14 +280,14 @@ namespace splinter::engine {
 
     std::optional<fieldInfo> engine::findField(std::string_view className,
                                                std::string_view fieldName,
-                                               std::string_view signature) const {
+                                               std::string_view descriptor) const {
         const auto found = fieldLookupIndex_.find(std::format("{}#{}", className, fieldName));
         if (found == fieldLookupIndex_.end()) {
             return std::nullopt;
         }
 
         for (const auto index: found->second) {
-            if (fieldIndex_[index].decoded.signature == signature) {
+            if (fieldIndex_[index].descriptor == descriptor) {
                 return fieldIndex_[index];
             }
         }

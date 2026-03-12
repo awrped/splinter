@@ -4,6 +4,7 @@
 #include "analyzer/classAnalyzer.h"
 #include "analyzer/fieldAnalyzer.h"
 #include "analyzer/methodAnalyzer.h"
+#include "classfile/accessFlags.h"
 #include "hotspot/symbolTable.h"
 #include "hotspot/vmStructs.h"
 #include "memory/processMemory.h"
@@ -17,29 +18,52 @@
 #include <vector>
 
 namespace splinter::engine {
+    enum class classKind {
+        instance,
+        nonInstance
+    };
+
     struct classInfo {
         std::uint64_t address = 0;
         std::string name;
-        bool isInstanceKlass = false;
+        classKind kind = classKind::nonInstance;
         std::optional<std::int32_t> layoutHelper;
         std::optional<std::int32_t> javaFieldCount;
         std::optional<std::int32_t> totalFieldCount;
         std::size_t methodCount = 0;
+
+        [[nodiscard]] bool isInstanceKlass() const noexcept {
+            return kind == classKind::instance;
+        }
     };
 
     struct methodInfo {
         std::uint64_t classAddress = 0;
         std::string className;
         std::uint64_t address = 0;
+        std::uint64_t constMethodAddress = 0;
+        std::uint64_t methodDataAddress = 0;
+        std::uint64_t methodCountersAddress = 0;
         std::string name;
-        std::string signature;
+        std::string descriptor;
+        std::string displaySignature;
+        std::optional<std::int32_t> vtableIndex;
         std::optional<std::uint32_t> accessFlags;
     };
 
     struct fieldInfo {
         std::uint64_t classAddress = 0;
         std::string className;
-        hotspot::decodedFieldInfo decoded;
+        std::uint32_t index = 0;
+        std::string name;
+        std::string descriptor;
+        std::string displayType;
+        std::string genericSignature;
+        std::uint32_t offset = 0;
+        classfile::accessFlags accessFlags{};
+        hotspot::fieldFlags flags{};
+        std::uint16_t initializerIndex = 0;
+        std::uint16_t contentionGroup = 0;
     };
 
     class engine {
@@ -81,19 +105,23 @@ namespace splinter::engine {
         [[nodiscard]] std::vector<methodInfo> findMethods(std::string_view className,
                                                           std::string_view methodName) const;
 
+        [[nodiscard]] std::vector<methodInfo> methodsForClass(std::string_view className) const;
+
         [[nodiscard]] std::optional<methodInfo> findMethod(std::string_view className,
                                                            std::string_view methodName,
-                                                           std::string_view signature) const;
+                                                           std::string_view descriptor) const;
 
         [[nodiscard]] std::vector<fieldInfo> findFields(std::string_view className,
                                                         std::string_view fieldName) const;
+
+        [[nodiscard]] std::vector<fieldInfo> fieldsForClass(std::string_view className) const;
 
         [[nodiscard]] std::optional<fieldInfo> findField(std::string_view className,
                                                          std::string_view fieldName) const;
 
         [[nodiscard]] std::optional<fieldInfo> findField(std::string_view className,
                                                          std::string_view fieldName,
-                                                         std::string_view signature) const;
+                                                         std::string_view descriptor) const;
 
     private:
         std::unordered_map<std::string, std::vector<std::size_t> > classNameIndex_;
