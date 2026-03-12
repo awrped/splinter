@@ -26,6 +26,9 @@ int main() {
     std::cout << "vmTypes: " << engine.vm().types().entries().size() << '\n';
     std::cout << "int constants: " << engine.vm().constants().intEntries().size() << '\n';
     std::cout << "long constants: " << engine.vm().constants().longEntries().size() << '\n';
+    std::cout << "indexed classes: " << engine.classIndex().size() << '\n';
+    std::cout << "indexed methods: " << engine.methodIndex().size() << '\n';
+    std::cout << "indexed fields: " << engine.fieldIndex().size() << '\n';
 
     const auto memory = engine.memory();
     const auto symbols = engine.symbols();
@@ -73,8 +76,13 @@ int main() {
     }
 
     splinter::engine::hotspot::instanceKlassView klass(memory, engine.vm(), *selectedInstanceKlass);
+    const auto selectedClassName = klass.name(symbols);
     std::cout << "selected instance klass: 0x" << std::hex << klass.address() << std::dec
-            << " name=" << klass.name(symbols) << '\n';
+            << " name=" << selectedClassName << '\n';
+    if (const auto indexedClass = engine.findClass(selectedClassName)) {
+        std::cout << "lookup class: 0x" << std::hex << indexedClass->address << std::dec
+                << " methods=" << indexedClass->methodCount << '\n';
+    }
     const auto constantPoolAddress = klass.constantsAddress();
     if (!constantPoolAddress) {
         std::cout << "selected klass has no constant pool\n";
@@ -122,6 +130,12 @@ int main() {
         }
         std::cout << '\n';
     }
+    if (!decodedFields.empty()) {
+        if (const auto indexedField = engine.findField(selectedClassName, decodedFields.front().name)) {
+            std::cout << "lookup field: " << indexedField->decoded.name << " "
+                    << indexedField->decoded.signature << " offset=" << indexedField->decoded.offset << '\n';
+        }
+    }
 
     std::cout << "method sample: " << std::min<std::size_t>(methodAddresses.size(), 5) << '\n';
     std::optional<std::size_t> bytecodeSampleIndex;
@@ -131,6 +145,11 @@ int main() {
         const auto signature = method.signature(constantPool, symbols);
         std::cout << "  method[" << index << "] " << methodName << " "
                 << splinter::engine::classfile::signatureParser::parseMethod(signature) << '\n';
+        if (index == 0) {
+            if (const auto indexedMethod = engine.findMethod(selectedClassName, methodName, signature)) {
+                std::cout << "  lookup method[0] 0x" << std::hex << indexedMethod->address << std::dec << '\n';
+            }
+        }
 
         if (!bytecodeSampleIndex && !methodName.starts_with('<')) {
             bytecodeSampleIndex = index;
