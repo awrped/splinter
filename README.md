@@ -1,6 +1,6 @@
 # splinter
 
-splinter is a jvm analysis toolkit, allowing the user to view classes, methods, fields, constant pools and bytecode on runtime
+splinter is a jvm analysis toolkit, allowing the user to view classes, methods, fields, constant pools and bytecode on runtime. this was made and tested on openjdk build 22.0.2+9-70
 
 ## what is splinter?
 
