@@ -167,6 +167,15 @@ int main() {
         if (constMethodAddress) {
             splinter::engine::hotspot::constMethodView constMethod(memory, engine.vm(), *constMethodAddress);
             const auto code = constMethod.bytecodes();
+            const auto instructions = splinter::engine::bytecode::bytecodePrinter::decode(code, constantPool, symbols);
+            std::cout << "  decoded instructions: " << instructions.size() << '\n';
+            if (!instructions.empty()) {
+                std::cout << "  first instruction: " << instructions.front().mnemonic;
+                if (!instructions.front().operandText.empty()) {
+                    std::cout << " " << instructions.front().operandText;
+                }
+                std::cout << '\n';
+            }
             std::cout << "  bytecode dump:\n"
                     << splinter::engine::bytecode::bytecodePrinter::print(code, constantPool, symbols);
         }

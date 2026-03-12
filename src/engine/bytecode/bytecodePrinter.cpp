@@ -364,8 +364,7 @@ namespace splinter::engine::bytecode {
                                                                            *cacheAddress);
                             const auto cpIndex =
                                     cacheView.indyConstantPoolIndexAt(
-                                        hotspot::constantPoolCacheView::decodeInvokedynamicIndex(
-                                            encodedIndex));
+                                        hotspot::constantPoolCacheView::decodeInvokedynamicIndex(encodedIndex));
                             if (cpIndex) {
                                 return decodeConstantPoolOperand(*constantPool, *symbols, *cpIndex);
                             }
@@ -482,36 +481,61 @@ namespace splinter::engine::bytecode {
             }
         }
 
-        std::string printImpl(const std::vector<std::uint8_t> &code,
-                              const hotspot::constantPoolView *constantPool,
-                              const hotspot::symbolTable *symbols) {
-            std::ostringstream stream;
+        [[nodiscard]] std::vector<instructionInfo> decodeImpl(const std::vector<std::uint8_t> &code,
+                                                              const hotspot::constantPoolView *constantPool,
+                                                              const hotspot::symbolTable *symbols) {
+            std::vector<instructionInfo> instructions;
             std::size_t index = 0;
             while (index < code.size()) {
                 const auto opcode = code[index];
                 const auto length = instructionLength(code, index);
-                stream << std::setw(4) << index << ": " << bytecodeTable::name(opcode)
-                        << " (0x" << std::hex << static_cast<unsigned int>(opcode) << std::dec << ")";
 
-                const auto decoded = decodeInstruction(code, index, constantPool, symbols);
-                if (!decoded.empty()) {
-                    stream << " " << decoded;
+                instructionInfo instruction{};
+                instruction.offset = index;
+                instruction.opcode = opcode;
+                instruction.mnemonic = std::string(bytecodeTable::name(opcode));
+                instruction.length = std::max<std::size_t>(1, length);
+                instruction.operandText = decodeInstruction(code, index, constantPool, symbols);
+                instructions.push_back(std::move(instruction));
+
+                index += std::max<std::size_t>(1, length);
+            }
+            return instructions;
+        }
+
+        [[nodiscard]] std::string printImpl(const std::vector<instructionInfo> &instructions) {
+            std::ostringstream stream;
+            for (const auto &instruction: instructions) {
+                stream << std::setw(4) << instruction.offset << ": " << instruction.mnemonic
+                        << " (0x" << std::hex << static_cast<unsigned int>(instruction.opcode) << std::dec << ")";
+
+                if (!instruction.operandText.empty()) {
+                    stream << " " << instruction.operandText;
                 }
 
                 stream << '\n';
-                index += std::max<std::size_t>(1, length);
             }
             return stream.str();
         }
     }
 
+    std::vector<instructionInfo> bytecodePrinter::decode(const std::vector<std::uint8_t> &code) {
+        return bytecodePrinterDetail::decodeImpl(code, nullptr, nullptr);
+    }
+
+    std::vector<instructionInfo> bytecodePrinter::decode(const std::vector<std::uint8_t> &code,
+                                                         const hotspot::constantPoolView &constantPool,
+                                                         const hotspot::symbolTable &symbols) {
+        return bytecodePrinterDetail::decodeImpl(code, &constantPool, &symbols);
+    }
+
     std::string bytecodePrinter::print(const std::vector<std::uint8_t> &code) {
-        return bytecodePrinterDetail::printImpl(code, nullptr, nullptr);
+        return bytecodePrinterDetail::printImpl(decode(code));
     }
 
     std::string bytecodePrinter::print(const std::vector<std::uint8_t> &code,
                                        const hotspot::constantPoolView &constantPool,
                                        const hotspot::symbolTable &symbols) {
-        return bytecodePrinterDetail::printImpl(code, &constantPool, &symbols);
+        return bytecodePrinterDetail::printImpl(decode(code, constantPool, symbols));
     }
 }
