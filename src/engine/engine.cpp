@@ -1,5 +1,7 @@
 #include "engine.h"
 
+#include "hotspot/classLoaderData.h"
+
 namespace splinter::engine {
   bool engine::initialize() {
     lastError_.clear();

@@ -34,7 +34,6 @@ int main() {
     std::cout << "loaded klass sample: " << klassSampleAddresses.size() << '\n';
 
     std::optional<std::uint64_t> selectedInstanceKlass;
-    std::optional<std::uint64_t> fallbackInstanceKlass;
     for (std::size_t index = 0; index < klassAddresses.size(); ++index) {
         try {
             splinter::engine::hotspot::klassView klass(memory, engine.vm(), klassAddresses[index]);
@@ -52,9 +51,6 @@ int main() {
             if (isInstanceKlass) {
                 splinter::engine::hotspot::instanceKlassView instanceKlass(memory, engine.vm(), klass.address());
                 if (instanceKlass.constantsAddress().value_or(0) != 0) {
-                    if (!fallbackInstanceKlass) {
-                        fallbackInstanceKlass = klass.address();
-                    }
                     const auto className = klass.name(symbols);
                     const bool isGeneratedLambdaForm = className.find("LambdaForm$") != std::string::npos;
                     if (!selectedInstanceKlass && className.find('+') == std::string::npos &&
@@ -72,11 +68,7 @@ int main() {
     }
 
     if (!selectedInstanceKlass) {
-        selectedInstanceKlass = fallbackInstanceKlass;
-    }
-
-    if (!selectedInstanceKlass) {
-        std::cout << "no instance klass with a constant pool was found in the current sample\n";
+        std::cout << "no non-generated instance klass with a constant pool was found in the current sample\n";
         return 0;
     }
 
