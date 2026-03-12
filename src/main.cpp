@@ -26,15 +26,12 @@ int main() {
     std::cout << "vmTypes: " << engine.vm().types().entries().size() << '\n';
     std::cout << "int constants: " << engine.vm().constants().intEntries().size() << '\n';
     std::cout << "long constants: " << engine.vm().constants().longEntries().size() << '\n';
-    std::cout << "indexed classes: " << engine.classIndex().size() << '\n';
-    std::cout << "indexed methods: " << engine.methodIndex().size() << '\n';
-    std::cout << "indexed fields: " << engine.fieldIndex().size() << '\n';
 
     const auto memory = engine.memory();
     const auto symbols = engine.symbols();
-    const auto klassSampleAddresses = engine.loadedKlassAddresses(8);
     const auto klassAddresses = engine.loadedKlassAddresses(4096);
-    std::cout << "loaded klass sample: " << klassSampleAddresses.size() << '\n';
+    const auto klassSampleCount = std::min<std::size_t>(klassAddresses.size(), 8);
+    std::cout << "loaded klass sample: " << klassSampleCount << '\n';
 
     std::optional<std::uint64_t> selectedInstanceKlass;
     for (std::size_t index = 0; index < klassAddresses.size(); ++index) {
@@ -42,7 +39,7 @@ int main() {
             splinter::engine::hotspot::klassView klass(memory, engine.vm(), klassAddresses[index]);
             const auto layoutHelper = klass.layoutHelper();
             const bool isInstanceKlass = klass.isInstanceKlass();
-            if (index < klassSampleAddresses.size()) {
+            if (index < klassSampleCount) {
                 std::cout << "klass[" << index << "] 0x" << std::hex << klass.address() << std::dec;
                 if (layoutHelper) {
                     std::cout << " layoutHelper=" << *layoutHelper;
@@ -59,11 +56,12 @@ int main() {
                     if (!selectedInstanceKlass && className.find('+') == std::string::npos &&
                         !className.starts_with('[') && !isGeneratedLambdaForm) {
                         selectedInstanceKlass = klass.address();
+                        break;
                     }
                 }
             }
         } catch (const std::exception &exception) {
-            if (index < klassSampleAddresses.size()) {
+            if (index < klassSampleCount) {
                 std::cout << "klass[" << index << "] 0x" << std::hex << klassAddresses[index] << std::dec
                         << " error=" << exception.what() << '\n';
             }
@@ -79,10 +77,6 @@ int main() {
     const auto selectedClassName = klass.name(symbols);
     std::cout << "selected instance klass: 0x" << std::hex << klass.address() << std::dec
             << " name=" << selectedClassName << '\n';
-    if (const auto indexedClass = engine.findClass(selectedClassName)) {
-        std::cout << "lookup class: 0x" << std::hex << indexedClass->address << std::dec
-                << " methods=" << indexedClass->methodCount << '\n';
-    }
     const auto constantPoolAddress = klass.constantsAddress();
     if (!constantPoolAddress) {
         std::cout << "selected klass has no constant pool\n";
@@ -130,13 +124,6 @@ int main() {
         }
         std::cout << '\n';
     }
-    if (!decodedFields.empty()) {
-        if (const auto indexedField = engine.findField(selectedClassName, decodedFields.front().name)) {
-            std::cout << "lookup field: " << indexedField->name << " "
-                    << indexedField->descriptor << " offset=" << indexedField->offset << '\n';
-        }
-    }
-
     std::cout << "method sample: " << std::min<std::size_t>(methodAddresses.size(), 5) << '\n';
     std::optional<std::size_t> bytecodeSampleIndex;
     for (std::size_t index = 0; index < methodAddresses.size() && index < 5; ++index) {
@@ -146,9 +133,27 @@ int main() {
         std::cout << "  method[" << index << "] " << methodName << " "
                 << splinter::engine::classfile::signatureParser::parseMethod(signature) << '\n';
         if (index == 0) {
-            if (const auto indexedMethod = engine.findMethod(selectedClassName, methodName, signature)) {
-                std::cout << "  lookup method[0] 0x" << std::hex << indexedMethod->address << std::dec
-                        << " " << indexedMethod->displaySignature << '\n';
+            if (const auto details = engine.describeMethod(method.address())) {
+                std::cout << "  metadata: code=" << details->codeSize.value_or(0)
+                        << " maxStack=" << details->maxStack.value_or(0)
+                        << " maxLocals=" << details->maxLocals.value_or(0)
+                        << " lines=" << details->lineNumbers.size()
+                        << " locals=" << details->localVariables.size()
+                        << " handlers=" << details->exceptionHandlers.size()
+                        << " checked=" << details->checkedExceptions.size()
+                        << " params=" << details->parameters.size() << '\n';
+                if (!details->genericSignature.empty()) {
+                    std::cout << "  generic signature: " << details->genericSignature << '\n';
+                }
+                if (!details->lineNumbers.empty()) {
+                    const auto &line = details->lineNumbers.front();
+                    std::cout << "  first line: bci=" << line.startBci << " line=" << line.lineNumber << '\n';
+                }
+                if (!details->localVariables.empty()) {
+                    const auto &local = details->localVariables.front();
+                    std::cout << "  first local: slot=" << local.slot << " " << local.name
+                            << " " << local.descriptor << '\n';
+                }
             }
         }
 

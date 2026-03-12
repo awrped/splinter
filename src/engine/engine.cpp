@@ -4,6 +4,7 @@
 #include "classfile/signatureParser.h"
 #include "hotspot/classLoaderData.h"
 #include "hotspot/constantPool.h"
+#include "hotspot/constMethod.h"
 #include "hotspot/instanceKlass.h"
 #include "hotspot/klass.h"
 #include "hotspot/method.h"
@@ -25,7 +26,7 @@ namespace splinter::engine {
             return false;
         }
 
-        return refreshIndexes();
+        return true;
     }
 
     bool engine::refreshIndexes() {
@@ -35,6 +36,7 @@ namespace splinter::engine {
         classNameIndex_.clear();
         methodLookupIndex_.clear();
         fieldLookupIndex_.clear();
+        indexesReady_ = false;
         lastError_.clear();
 
         try {
@@ -127,6 +129,7 @@ namespace splinter::engine {
             return false;
         }
 
+        indexesReady_ = true;
         return true;
     }
 
@@ -172,19 +175,28 @@ namespace splinter::engine {
     }
 
     const std::vector<classInfo> &engine::classIndex() const noexcept {
+        const auto ignored = ensureIndexes();
+        (void) ignored;
         return classIndex_;
     }
 
     const std::vector<methodInfo> &engine::methodIndex() const noexcept {
+        const auto ignored = ensureIndexes();
+        (void) ignored;
         return methodIndex_;
     }
 
     const std::vector<fieldInfo> &engine::fieldIndex() const noexcept {
+        const auto ignored = ensureIndexes();
+        (void) ignored;
         return fieldIndex_;
     }
 
     std::vector<classInfo> engine::findClasses(std::string_view className) const {
         std::vector<classInfo> matches;
+        if (!ensureIndexes()) {
+            return matches;
+        }
         const auto found = classNameIndex_.find(std::string(className));
         if (found == classNameIndex_.end()) {
             return matches;
@@ -198,6 +210,9 @@ namespace splinter::engine {
     }
 
     std::optional<classInfo> engine::findClass(std::string_view className) const {
+        if (!ensureIndexes()) {
+            return std::nullopt;
+        }
         const auto found = classNameIndex_.find(std::string(className));
         if (found == classNameIndex_.end() || found->second.empty()) {
             return std::nullopt;
@@ -207,6 +222,9 @@ namespace splinter::engine {
 
     std::vector<methodInfo> engine::findMethods(std::string_view className, std::string_view methodName) const {
         std::vector<methodInfo> matches;
+        if (!ensureIndexes()) {
+            return matches;
+        }
         const auto found = methodLookupIndex_.find(std::format("{}#{}", className, methodName));
         if (found == methodLookupIndex_.end()) {
             return matches;
@@ -222,6 +240,9 @@ namespace splinter::engine {
     std::optional<methodInfo> engine::findMethod(std::string_view className,
                                                  std::string_view methodName,
                                                  std::string_view descriptor) const {
+        if (!ensureIndexes()) {
+            return std::nullopt;
+        }
         const auto found = methodLookupIndex_.find(std::format("{}#{}", className, methodName));
         if (found == methodLookupIndex_.end()) {
             return std::nullopt;
@@ -238,6 +259,9 @@ namespace splinter::engine {
 
     std::vector<methodInfo> engine::methodsForClass(std::string_view className) const {
         std::vector<methodInfo> matches;
+        if (!ensureIndexes()) {
+            return matches;
+        }
         for (const auto &method: methodIndex_) {
             if (method.className == className) {
                 matches.push_back(method);
@@ -248,6 +272,9 @@ namespace splinter::engine {
 
     std::vector<fieldInfo> engine::findFields(std::string_view className, std::string_view fieldName) const {
         std::vector<fieldInfo> matches;
+        if (!ensureIndexes()) {
+            return matches;
+        }
         const auto found = fieldLookupIndex_.find(std::format("{}#{}", className, fieldName));
         if (found == fieldLookupIndex_.end()) {
             return matches;
@@ -262,6 +289,9 @@ namespace splinter::engine {
 
     std::vector<fieldInfo> engine::fieldsForClass(std::string_view className) const {
         std::vector<fieldInfo> matches;
+        if (!ensureIndexes()) {
+            return matches;
+        }
         for (const auto &field: fieldIndex_) {
             if (field.className == className) {
                 matches.push_back(field);
@@ -271,6 +301,9 @@ namespace splinter::engine {
     }
 
     std::optional<fieldInfo> engine::findField(std::string_view className, std::string_view fieldName) const {
+        if (!ensureIndexes()) {
+            return std::nullopt;
+        }
         const auto found = fieldLookupIndex_.find(std::format("{}#{}", className, fieldName));
         if (found == fieldLookupIndex_.end() || found->second.empty()) {
             return std::nullopt;
@@ -281,6 +314,9 @@ namespace splinter::engine {
     std::optional<fieldInfo> engine::findField(std::string_view className,
                                                std::string_view fieldName,
                                                std::string_view descriptor) const {
+        if (!ensureIndexes()) {
+            return std::nullopt;
+        }
         const auto found = fieldLookupIndex_.find(std::format("{}#{}", className, fieldName));
         if (found == fieldLookupIndex_.end()) {
             return std::nullopt;
@@ -293,5 +329,120 @@ namespace splinter::engine {
         }
 
         return std::nullopt;
+    }
+
+    std::optional<methodDetails> engine::describeMethod(std::uint64_t methodAddress) const {
+        try {
+            const auto processMemory = memory();
+            const auto symbolReader = symbols();
+            hotspot::methodView method(processMemory, vm_, methodAddress);
+
+            const auto constMethodAddress = method.constMethodAddress();
+            if (!constMethodAddress || *constMethodAddress == 0) {
+                return std::nullopt;
+            }
+
+            hotspot::constMethodView constMethod(processMemory, vm_, *constMethodAddress);
+            const auto constantPoolAddress = constMethod.constantsAddress();
+            if (!constantPoolAddress || *constantPoolAddress == 0) {
+                return std::nullopt;
+            }
+
+            hotspot::constantPoolView constantPool(processMemory, vm_, *constantPoolAddress);
+
+            methodDetails details{};
+            details.methodAddress = method.address();
+            details.constMethodAddress = *constMethodAddress;
+            details.name = method.name(constantPool, symbolReader);
+            details.descriptor = method.signature(constantPool, symbolReader);
+            details.displaySignature = classfile::signatureParser::parseMethod(details.descriptor);
+            details.codeSize = constMethod.codeSize();
+            details.maxStack = constMethod.maxStack();
+            details.maxLocals = constMethod.maxLocals();
+            details.constMethodFlags = constMethod.flags();
+            details.genericSignature = constMethod.genericSignature(constantPool, symbolReader);
+            details.hasLineNumberTable = constMethod.hasLineNumberTable();
+            details.hasLocalVariableTable = constMethod.hasLocalVariableTable();
+            details.hasExceptionTable = constMethod.hasExceptionTable();
+            details.hasCheckedExceptions = constMethod.hasCheckedExceptions();
+            details.hasMethodParameters = constMethod.hasMethodParameters();
+            details.hasMethodAnnotations = constMethod.hasMethodAnnotations();
+            details.hasParameterAnnotations = constMethod.hasParameterAnnotations();
+            details.hasTypeAnnotations = constMethod.hasTypeAnnotations();
+            details.hasDefaultAnnotations = constMethod.hasDefaultAnnotations();
+
+            if (const auto poolHolderAddress = constantPool.poolHolderAddress()) {
+                hotspot::klassView holder(processMemory, vm_, *poolHolderAddress);
+                details.className = holder.name(symbolReader);
+            }
+
+            for (const auto &entry: constMethod.lineNumbers()) {
+                details.lineNumbers.push_back(lineNumberInfo{entry.startBci, entry.lineNumber});
+            }
+
+            for (const auto &entry: constMethod.localVariables(constantPool, symbolReader)) {
+                localVariableInfo variable{};
+                variable.startBci = entry.startBci;
+                variable.length = entry.length;
+                variable.slot = entry.slot;
+                variable.name = entry.name;
+                variable.descriptor = entry.descriptor;
+                variable.displayType = entry.descriptor.empty()
+                                           ? std::string()
+                                           : classfile::descriptorParser::parseField(entry.descriptor);
+                variable.genericSignature = entry.genericSignature;
+                details.localVariables.push_back(std::move(variable));
+            }
+
+            for (const auto &entry: constMethod.exceptionTable(constantPool, symbolReader)) {
+                details.exceptionHandlers.push_back(exceptionHandlerInfo{
+                    entry.startPc,
+                    entry.endPc,
+                    entry.handlerPc,
+                    entry.catchTypeIndex,
+                    entry.catchType
+                });
+            }
+
+            for (const auto &entry: constMethod.checkedExceptions(constantPool, symbolReader)) {
+                details.checkedExceptions.push_back(checkedExceptionInfo{
+                    entry.classIndex,
+                    entry.className
+                });
+            }
+
+            for (const auto &entry: constMethod.methodParameters(constantPool, symbolReader)) {
+                details.parameters.push_back(methodParameterInfo{
+                    entry.nameIndex,
+                    entry.accessFlags,
+                    entry.name
+                });
+            }
+
+            const auto methodAnnotations = constMethod.methodAnnotations();
+            details.methodAnnotations = annotationBlob{methodAnnotations.address, methodAnnotations.length};
+            const auto parameterAnnotations = constMethod.parameterAnnotations();
+            details.parameterAnnotations = annotationBlob{parameterAnnotations.address, parameterAnnotations.length};
+            const auto typeAnnotations = constMethod.typeAnnotations();
+            details.typeAnnotations = annotationBlob{typeAnnotations.address, typeAnnotations.length};
+            const auto defaultAnnotations = constMethod.defaultAnnotations();
+            details.defaultAnnotations = annotationBlob{defaultAnnotations.address, defaultAnnotations.length};
+
+            return details;
+        } catch (const std::exception &) {
+            return std::nullopt;
+        }
+    }
+
+    std::optional<methodDetails> engine::describeMethod(const methodInfo &method) const {
+        return describeMethod(method.address);
+    }
+
+    bool engine::ensureIndexes() const {
+        if (indexesReady_) {
+            return true;
+        }
+
+        return const_cast<engine *>(this)->refreshIndexes();
     }
 }

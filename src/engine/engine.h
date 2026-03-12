@@ -51,6 +51,77 @@ namespace splinter::engine {
         std::optional<std::uint32_t> accessFlags;
     };
 
+    struct lineNumberInfo {
+        std::uint16_t startBci = 0;
+        std::uint16_t lineNumber = 0;
+    };
+
+    struct localVariableInfo {
+        std::uint16_t startBci = 0;
+        std::uint16_t length = 0;
+        std::uint16_t slot = 0;
+        std::string name;
+        std::string descriptor;
+        std::string displayType;
+        std::string genericSignature;
+    };
+
+    struct exceptionHandlerInfo {
+        std::uint16_t startPc = 0;
+        std::uint16_t endPc = 0;
+        std::uint16_t handlerPc = 0;
+        std::uint16_t catchTypeIndex = 0;
+        std::string catchType;
+    };
+
+    struct checkedExceptionInfo {
+        std::uint16_t classIndex = 0;
+        std::string className;
+    };
+
+    struct methodParameterInfo {
+        std::uint16_t nameIndex = 0;
+        std::uint16_t accessFlags = 0;
+        std::string name;
+    };
+
+    struct annotationBlob {
+        std::uint64_t address = 0;
+        std::int32_t length = 0;
+    };
+
+    struct methodDetails {
+        std::uint64_t methodAddress = 0;
+        std::uint64_t constMethodAddress = 0;
+        std::string className;
+        std::string name;
+        std::string descriptor;
+        std::string displaySignature;
+        std::optional<std::uint16_t> codeSize;
+        std::optional<std::uint16_t> maxStack;
+        std::optional<std::uint16_t> maxLocals;
+        std::optional<std::uint32_t> constMethodFlags;
+        std::string genericSignature;
+        bool hasLineNumberTable = false;
+        bool hasLocalVariableTable = false;
+        bool hasExceptionTable = false;
+        bool hasCheckedExceptions = false;
+        bool hasMethodParameters = false;
+        bool hasMethodAnnotations = false;
+        bool hasParameterAnnotations = false;
+        bool hasTypeAnnotations = false;
+        bool hasDefaultAnnotations = false;
+        annotationBlob methodAnnotations{};
+        annotationBlob parameterAnnotations{};
+        annotationBlob typeAnnotations{};
+        annotationBlob defaultAnnotations{};
+        std::vector<lineNumberInfo> lineNumbers;
+        std::vector<localVariableInfo> localVariables;
+        std::vector<exceptionHandlerInfo> exceptionHandlers;
+        std::vector<checkedExceptionInfo> checkedExceptions;
+        std::vector<methodParameterInfo> parameters;
+    };
+
     struct fieldInfo {
         std::uint64_t classAddress = 0;
         std::string className;
@@ -123,13 +194,20 @@ namespace splinter::engine {
                                                          std::string_view fieldName,
                                                          std::string_view descriptor) const;
 
+        [[nodiscard]] std::optional<methodDetails> describeMethod(std::uint64_t methodAddress) const;
+
+        [[nodiscard]] std::optional<methodDetails> describeMethod(const methodInfo &method) const;
+
     private:
+        [[nodiscard]] bool ensureIndexes() const;
+
         std::unordered_map<std::string, std::vector<std::size_t> > classNameIndex_;
         std::unordered_map<std::string, std::vector<std::size_t> > methodLookupIndex_;
         std::unordered_map<std::string, std::vector<std::size_t> > fieldLookupIndex_;
         std::vector<classInfo> classIndex_;
         std::vector<methodInfo> methodIndex_;
         std::vector<fieldInfo> fieldIndex_;
+        bool indexesReady_ = false;
         std::string lastError_;
         memory::remoteProcess process_;
         hotspot::vmStructs vm_;
