@@ -2,8 +2,6 @@
 
 splinter is a jvm analysis toolkit, allowing the user to view classes, methods, fields, constant pools and bytecode on runtime
 
-![splinter high-level architecture](images/image1.png)
-
 ## what is splinter?
 
 usually, when you think of an analysis toolkit for the jvm, you would think it uses jni or jvmti, but not splinter!
