@@ -1,6 +1,14 @@
 #include "classLoaderData.h"
 
+#include <unordered_set>
+
 namespace splinter::engine::hotspot {
+    namespace {
+        // the graph is walked without suspending the target, a link that is torn or
+        // freed mid walk can point back into the chain and loop forever
+        constexpr std::size_t maxChainLength = 1u << 20;
+    }
+
     classLoaderDataView::classLoaderDataView(const memory::processMemory &memory, const vmStructs &vm,
                                              std::uint64_t address) noexcept
         : memory_(&memory), vm_(&vm), address_(address) {
@@ -32,8 +40,13 @@ namespace splinter::engine::hotspot {
             return result;
         }
 
+        std::unordered_set<std::uint64_t> visited;
         std::uint64_t current = *firstKlass;
-        while (current != 0) {
+        while (current != 0 && result.size() < maxChainLength) {
+            if (!visited.insert(current).second) {
+                break;
+            }
+
             result.push_back(current);
             if (limit != 0 && result.size() >= limit) {
                 break;
@@ -63,9 +76,14 @@ namespace splinter::engine::hotspot {
             return result;
         }
 
+        std::unordered_set<std::uint64_t> visited;
         std::uint64_t current = *head;
         std::size_t classLoaderCount = 0;
-        while (current != 0) {
+        while (current != 0 && classLoaderCount < maxChainLength) {
+            if (!visited.insert(current).second) {
+                break;
+            }
+
             classLoaderDataView view(memory, vm, current);
             auto klasses = view.klassAddresses(klassLimit == 0 ? 0 : klassLimit - result.size());
             result.insert(result.end(), klasses.begin(), klasses.end());
