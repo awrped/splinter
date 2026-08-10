@@ -19,6 +19,9 @@ namespace splinter::engine::bytecode {
 
     class bytecodePrinter {
     public:
+        // returns 0 when index is past the end of code, otherwise at least 1
+        [[nodiscard]] static std::size_t instructionLength(const std::vector<std::uint8_t> &code, std::size_t index);
+
         [[nodiscard]] static std::vector<instructionInfo> decode(const std::vector<std::uint8_t> &code);
 
         [[nodiscard]] static std::vector<instructionInfo> decode(const std::vector<std::uint8_t> &code,

@@ -17,6 +17,12 @@ namespace splinter::engine::bytecode {
             return stream.str();
         }
 
+        // every operand read goes through byteAt, the code array comes from a live
+        // process and can be truncated or torn while hotspot rewrites it
+        [[nodiscard]] std::uint8_t byteAt(const std::vector<std::uint8_t> &code, std::size_t offset) noexcept {
+            return offset < code.size() ? code[offset] : static_cast<std::uint8_t>(0);
+        }
+
         [[nodiscard]] std::uint16_t readU16(const std::vector<std::uint8_t> &code, std::size_t offset) {
             if (offset + 1 >= code.size()) {
                 return 0;
@@ -198,7 +204,7 @@ namespace splinter::engine::bytecode {
                     if (index + 1 >= code.size()) {
                         return 1;
                     }
-                    return code[index + 1] == 0x84 ? 6 : 4;
+                    return byteAt(code, index + 1) == 0x84 ? 6 : 4;
                 default:
                     return 1;
             }
@@ -243,14 +249,14 @@ namespace splinter::engine::bytecode {
             switch (opcode) {
                 case 0x10:
                     return "value=" + std::to_string(
-                               static_cast<std::int32_t>(static_cast<std::int8_t>(code[index + 1])));
+                               static_cast<std::int32_t>(static_cast<std::int8_t>(byteAt(code, index + 1))));
                 case 0x11:
                     return "value=" + std::to_string(static_cast<std::int32_t>(readS16(code, index + 1)));
                 case 0x12:
                     if (constantPool != nullptr && symbols != nullptr) {
-                        return decodeConstantPoolOperand(*constantPool, *symbols, code[index + 1]);
+                        return decodeConstantPoolOperand(*constantPool, *symbols, byteAt(code, index + 1));
                     }
-                    return "cp=#" + std::to_string(code[index + 1]);
+                    return "cp=#" + std::to_string(byteAt(code, index + 1));
                 case 0x13:
                 case 0x14:
                 case 0xbb:
@@ -337,7 +343,7 @@ namespace splinter::engine::bytecode {
                 }
                 case 0xb9: {
                     const auto methodIndex = readNativeU16(code, index + 1);
-                    const auto argumentCount = code[index + 3];
+                    const auto argumentCount = byteAt(code, index + 3);
                     if (constantPool != nullptr && symbols != nullptr) {
                         const auto cacheAddress = constantPool->cacheAddress();
                         if (cacheAddress && *cacheAddress != 0) {
@@ -375,9 +381,9 @@ namespace splinter::engine::bytecode {
                 }
                 case 0xe6:
                     if (constantPool != nullptr && symbols != nullptr) {
-                        return decodeResolvedReferenceOperand(*constantPool, *symbols, code[index + 1]);
+                        return decodeResolvedReferenceOperand(*constantPool, *symbols, byteAt(code, index + 1));
                     }
-                    return "refIndex=" + std::to_string(code[index + 1]);
+                    return "refIndex=" + std::to_string(byteAt(code, index + 1));
                 case 0xe7:
                     if (constantPool != nullptr && symbols != nullptr) {
                         return decodeResolvedReferenceOperand(*constantPool, *symbols, readNativeU16(code, index + 1));
@@ -396,14 +402,14 @@ namespace splinter::engine::bytecode {
                 case 0xa9:
                 case 0xe0:
                 case 0xe2:
-                    return "local=" + std::to_string(code[index + 1]);
+                    return "local=" + std::to_string(byteAt(code, index + 1));
                 case 0xe1:
-                    return joinWithSpaces("local0=" + std::to_string(code[index + 1]),
-                                          "local1=" + std::to_string(code[index + 3]));
+                    return joinWithSpaces("local0=" + std::to_string(byteAt(code, index + 1)),
+                                          "local1=" + std::to_string(byteAt(code, index + 3)));
                 case 0x84:
-                    return joinWithSpaces("local=" + std::to_string(code[index + 1]),
+                    return joinWithSpaces("local=" + std::to_string(byteAt(code, index + 1)),
                                           "delta=" + std::to_string(static_cast<std::int32_t>(
-                                              static_cast<std::int8_t>(code[index + 2]))));
+                                              static_cast<std::int8_t>(byteAt(code, index + 2)))));
                 case 0x99:
                 case 0x9a:
                 case 0x9b:
@@ -427,7 +433,7 @@ namespace splinter::engine::bytecode {
                 case 0xc9:
                     return "target=" + std::to_string(static_cast<std::int64_t>(index) + readS32(code, index + 1));
                 case 0xbc:
-                    switch (code[index + 1]) {
+                    switch (byteAt(code, index + 1)) {
                         case 4: return "atype=boolean";
                         case 5: return "atype=char";
                         case 6: return "atype=float";
@@ -436,28 +442,28 @@ namespace splinter::engine::bytecode {
                         case 9: return "atype=short";
                         case 10: return "atype=int";
                         case 11: return "atype=long";
-                        default: return "atype=" + std::to_string(code[index + 1]);
+                        default: return "atype=" + std::to_string(byteAt(code, index + 1));
                     }
                 case 0xc4:
                     if (index + 1 >= code.size()) {
                         return {};
                     }
-                    if (code[index + 1] == 0x84) {
+                    if (byteAt(code, index + 1) == 0x84) {
                         return joinWithSpaces("wide", "iinc",
                                               "local=" + std::to_string(readU16(code, index + 2)),
                                               "delta=" + std::to_string(readS16(code, index + 4)));
                     }
                     return joinWithSpaces("wide",
-                                          std::string(bytecodeTable::name(code[index + 1])),
+                                          std::string(bytecodeTable::name(byteAt(code, index + 1))),
                                           "local=" + std::to_string(readU16(code, index + 2)));
                 case 0xc5:
                     if (constantPool != nullptr && symbols != nullptr) {
                         return joinWithSpaces(
                             decodeConstantPoolOperand(*constantPool, *symbols, readU16(code, index + 1)),
-                            "dimensions=" + std::to_string(code[index + 3]));
+                            "dimensions=" + std::to_string(byteAt(code, index + 3)));
                     }
                     return joinWithSpaces("cp=#" + std::to_string(readU16(code, index + 1)),
-                                          "dimensions=" + std::to_string(code[index + 3]));
+                                          "dimensions=" + std::to_string(byteAt(code, index + 3)));
                 case 0xaa:
                 case 0xe4: {
                     const std::size_t aligned = (index + 4U) & ~std::size_t(3);
@@ -517,6 +523,10 @@ namespace splinter::engine::bytecode {
             }
             return stream.str();
         }
+    }
+
+    std::size_t bytecodePrinter::instructionLength(const std::vector<std::uint8_t> &code, std::size_t index) {
+        return bytecodePrinterDetail::instructionLength(code, index);
     }
 
     std::vector<instructionInfo> bytecodePrinter::decode(const std::vector<std::uint8_t> &code) {
