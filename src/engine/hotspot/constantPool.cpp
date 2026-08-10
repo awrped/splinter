@@ -27,10 +27,21 @@ namespace splinter::engine::hotspot {
     }
 
     std::optional<std::int32_t> constantPoolView::length() const {
-        const vmStructEntry *field = vm_->findField("ConstantPool", "_length");
-        return field != nullptr
-                   ? std::optional<std::int32_t>(memory_->read<std::int32_t>(address_ + field->offset))
-                   : std::nullopt;
+        return length_.get([this]() -> std::optional<std::int32_t> {
+            const vmStructEntry *field = vm_->findField("ConstantPool", "_length");
+            return field != nullptr
+                       ? std::optional<std::int32_t>(memory_->read<std::int32_t>(address_ + field->offset))
+                       : std::nullopt;
+        });
+    }
+
+    bool constantPoolView::isValidIndex(std::int32_t index) const {
+        if (index < 1) {
+            return false;
+        }
+
+        const auto poolLength = length();
+        return !poolLength || index < *poolLength;
     }
 
     std::optional<std::uint64_t> constantPoolView::tagsAddress() const {
@@ -71,7 +82,7 @@ namespace splinter::engine::hotspot {
     std::optional<std::uint8_t> constantPoolView::tagAt(std::int32_t index) const {
         const auto tags = tagsAddress();
         const vmStructEntry *dataField = vm_->findField("Array<u1>", "_data");
-        if (!tags || dataField == nullptr) {
+        if (!tags || dataField == nullptr || !isValidIndex(index)) {
             return std::nullopt;
         }
         return memory_->read<std::uint8_t>(*tags + dataField->offset + static_cast<std::uint64_t>(index));
@@ -79,7 +90,7 @@ namespace splinter::engine::hotspot {
 
     std::optional<std::uint64_t> constantPoolView::rawSlotPointer(std::int32_t index) const {
         const auto typeSize = vm_->types().sizeOf("ConstantPool");
-        if (!typeSize) {
+        if (!typeSize || !isValidIndex(index)) {
             return std::nullopt;
         }
         return memory_->read<std::uint64_t>(
@@ -88,7 +99,7 @@ namespace splinter::engine::hotspot {
 
     std::optional<std::uint32_t> constantPoolView::rawSlot32(std::int32_t index) const {
         const auto typeSize = vm_->types().sizeOf("ConstantPool");
-        if (!typeSize) {
+        if (!typeSize || !isValidIndex(index)) {
             return std::nullopt;
         }
         return memory_->read<std::uint32_t>(
@@ -101,15 +112,12 @@ namespace splinter::engine::hotspot {
             return std::nullopt;
         }
 
-        const auto resolvedKlasses = resolvedKlassesAddress();
         const auto raw = rawSlot32(index);
-        const vmStructEntry *dataField = vm_->findField("Array<Klass*>", "_data");
-        if (!resolvedKlasses || !raw || dataField == nullptr) {
+        if (!raw) {
             return std::nullopt;
         }
 
-        const std::uint16_t resolvedKlassIndex = lowShort(*raw);
-        return resolvedKlassAtIndex(resolvedKlassIndex);
+        return resolvedKlassAtIndex(lowShort(*raw));
     }
 
     std::optional<std::uint16_t> constantPoolView::classNameIndexAt(std::int32_t index) const {
@@ -256,6 +264,12 @@ namespace splinter::engine::hotspot {
     }
 
     std::string constantPoolView::describeBootstrapAt(std::int32_t index, const symbolTable &symbols) const {
+        return describeBootstrapAt(index, symbols, 0);
+    }
+
+    std::string constantPoolView::describeBootstrapAt(std::int32_t index,
+                                                      const symbolTable &symbols,
+                                                      unsigned depth) const {
         const auto bootstrapMethodReferenceIndex = bootstrapMethodReferenceIndexAt(index);
         if (!bootstrapMethodReferenceIndex) {
             return {};
@@ -263,7 +277,7 @@ namespace splinter::engine::hotspot {
 
         const auto argumentIndexes = bootstrapArgumentIndexesAt(index);
         std::string summary = std::format("bsm=#{}", *bootstrapMethodReferenceIndex);
-        const auto bootstrapMethod = decodeAt(*bootstrapMethodReferenceIndex, symbols);
+        const auto bootstrapMethod = decodeAt(*bootstrapMethodReferenceIndex, symbols, depth + 1);
         if (!bootstrapMethod.summary.empty()) {
             summary += std::format(" {}", bootstrapMethod.summary);
         }
@@ -274,7 +288,7 @@ namespace splinter::engine::hotspot {
                 if (argumentIndex != 0) {
                     summary += ", ";
                 }
-                const auto argument = decodeAt(argumentIndexes[argumentIndex], symbols);
+                const auto argument = decodeAt(argumentIndexes[argumentIndex], symbols, depth + 1);
                 summary += std::format("#{} {}", argumentIndexes[argumentIndex], argument.summary);
             }
             summary += "]";
@@ -331,9 +345,23 @@ namespace splinter::engine::hotspot {
     }
 
     decodedConstantPoolEntry constantPoolView::decodeAt(std::int32_t index, const symbolTable &symbols) const {
+        return decodeAt(index, symbols, 0);
+    }
+
+    decodedConstantPoolEntry constantPoolView::decodeAt(std::int32_t index,
+                                                        const symbolTable &symbols,
+                                                        unsigned depth) const {
+        // method handles and bootstrap specifiers point back into the pool, a corrupt
+        // entry that points at itself would otherwise recurse until the stack dies
+        constexpr unsigned maxDepth = 4;
+
         decodedConstantPoolEntry entry{};
         entry.index = index;
         entry.tag = static_cast<constantTag>(tagAt(index).value_or(0));
+        if (depth > maxDepth) {
+            entry.summary = "...";
+            return entry;
+        }
 
         switch (entry.tag) {
             case constantTag::utf8:
@@ -402,7 +430,7 @@ namespace splinter::engine::hotspot {
             case constantTag::methodHandleInError: {
                 const auto referenceKind = methodHandleReferenceKindAt(index).value_or(0);
                 const auto referenceIndex = methodHandleReferenceIndexAt(index).value_or(0);
-                const auto reference = decodeAt(referenceIndex, symbols);
+                const auto reference = decodeAt(referenceIndex, symbols, depth + 1);
                 entry.summary = std::format("refKind={} refIndex=#{} {}", referenceKind, referenceIndex,
                                             reference.summary);
                 break;
@@ -412,7 +440,7 @@ namespace splinter::engine::hotspot {
             case constantTag::invokeDynamic: {
                 const auto nameAndTypeIndex = bootstrapNameAndTypeReferenceIndexAt(index).value_or(0);
                 const auto [name, signature] = nameAndTypeAt(nameAndTypeIndex, symbols);
-                entry.summary = std::format("{} {} {}", describeBootstrapAt(index, symbols), name, signature);
+                entry.summary = std::format("{} {} {}", describeBootstrapAt(index, symbols, depth), name, signature);
                 break;
             }
             default:

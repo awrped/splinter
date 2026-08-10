@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../util/cachedValue.h"
 #include "vmStructs.h"
 
 #include <cstdint>
@@ -114,6 +115,18 @@ namespace splinter::engine::hotspot {
                                                                       std::size_t limit = 0) const;
 
     private:
+        // a constant pool index that came out of remote memory is untrusted, reading
+        // past _length would silently decode unrelated metaspace
+        [[nodiscard]] bool isValidIndex(std::int32_t index) const;
+
+        [[nodiscard]] decodedConstantPoolEntry decodeAt(std::int32_t index,
+                                                        const symbolTable &symbols,
+                                                        unsigned depth) const;
+
+        [[nodiscard]] std::string describeBootstrapAt(std::int32_t index,
+                                                       const symbolTable &symbols,
+                                                       unsigned depth) const;
+
         [[nodiscard]] std::optional<std::uint64_t> resolvedKlassAtIndex(std::uint16_t index) const;
 
         [[nodiscard]] std::optional<std::uint32_t> operandOffsetAt(std::uint16_t bootstrapMethodAttributeIndex) const;
@@ -127,5 +140,6 @@ namespace splinter::engine::hotspot {
         const memory::processMemory *memory_ = nullptr;
         const vmStructs *vm_ = nullptr;
         std::uint64_t address_ = 0;
+        util::cachedValue<std::optional<std::int32_t> > length_;
     };
 }
