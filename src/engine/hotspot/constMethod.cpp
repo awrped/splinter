@@ -2,6 +2,7 @@
 
 #include "constantPool.h"
 #include "symbolTable.h"
+#include "unsigned5.h"
 
 #include <bit>
 #include <cstddef>
@@ -194,8 +195,8 @@ namespace splinter::engine::hotspot {
             }
 
             if (next == 0xFF) {
-                bci += readSigned5(buffer, offset);
-                line += readSigned5(buffer, offset);
+                bci += unsigned5::readInt(buffer, offset);
+                line += unsigned5::readInt(buffer, offset);
             } else {
                 bci += static_cast<std::int32_t>(next >> 3);
                 line += static_cast<std::int32_t>(next & 0x7);
@@ -516,48 +517,4 @@ namespace splinter::engine::hotspot {
         return info;
     }
 
-    std::uint32_t constMethodView::readUnsigned5(const std::vector<std::byte> &buffer, std::size_t &offset) const {
-        if (offset >= buffer.size()) {
-            throw std::runtime_error("Compressed stream overflow");
-        }
-
-        const std::size_t start = offset;
-        const std::uint32_t first = std::to_integer<std::uint8_t>(buffer[offset]);
-        if (first < 1) {
-            throw std::runtime_error("Compressed stream used an excluded byte");
-        }
-
-        std::uint32_t sum = first - 1;
-        if (sum < 191) {
-            ++offset;
-            return sum;
-        }
-
-        std::uint32_t shift = 6;
-        for (std::size_t index = 1; index < 5; ++index) {
-            if (start + index >= buffer.size()) {
-                throw std::runtime_error("Compressed stream ended mid-value");
-            }
-
-            const std::uint32_t value = std::to_integer<std::uint8_t>(buffer[start + index]);
-            if (value < 1) {
-                throw std::runtime_error("Compressed stream used an excluded byte");
-            }
-
-            sum += (value - 1) << shift;
-            if (value < 192 || index == 4) {
-                offset = start + index + 1;
-                return sum;
-            }
-
-            shift += 6;
-        }
-
-        throw std::runtime_error("Invalid compressed value");
-    }
-
-    std::int32_t constMethodView::readSigned5(const std::vector<std::byte> &buffer, std::size_t &offset) const {
-        const auto value = readUnsigned5(buffer, offset);
-        return static_cast<std::int32_t>((value >> 1) ^ -(static_cast<std::int32_t>(value & 1)));
-    }
 }

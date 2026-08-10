@@ -1,6 +1,7 @@
 #include "fieldInfo.h"
 
 #include "symbolTable.h"
+#include "unsigned5.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -103,8 +104,7 @@ namespace splinter::engine::hotspot {
     }
 
     bool fieldInfoView::unsigned5Reader::hasNext() const noexcept {
-        return buffer_ != nullptr && position_ < buffer_->size() &&
-               std::to_integer<std::uint8_t>((*buffer_)[position_]) != 0;
+        return buffer_ != nullptr && unsigned5::hasNext(*buffer_, position_);
     }
 
     std::size_t fieldInfoView::unsigned5Reader::position() const noexcept {
@@ -116,40 +116,7 @@ namespace splinter::engine::hotspot {
             throw std::runtime_error("UNSIGNED5 reader reached the end of the fieldinfo stream");
         }
 
-        const std::size_t start = position_;
-        std::uint32_t first = std::to_integer<std::uint8_t>((*buffer_)[position_]);
-        // HotSpot's UNSIGNED5 encoding reserves byte value 0 as the stream terminator.
-        if (first < 1) {
-            throw std::runtime_error("Encountered an excluded byte in the fieldinfo stream");
-        }
-
-        std::uint32_t sum = first - 1;
-        if (sum < 191) {
-            ++position_;
-            return sum;
-        }
-
-        std::uint32_t shift = 6;
-        for (std::uint32_t index = 1; index < 5; ++index) {
-            if (start + index >= buffer_->size()) {
-                throw std::runtime_error("Truncated UNSIGNED5 value in the fieldinfo stream");
-            }
-
-            const std::uint32_t value = std::to_integer<std::uint8_t>((*buffer_)[start + index]);
-            if (value < 1) {
-                throw std::runtime_error("Encountered an excluded byte in the fieldinfo stream");
-            }
-
-            sum += (value - 1) << shift;
-            if (value < 192 || index == 4) {
-                position_ = start + index + 1;
-                return sum;
-            }
-
-            shift += 6;
-        }
-
-        throw std::runtime_error("Invalid UNSIGNED5 value in the fieldinfo stream");
+        return unsigned5::readUint(*buffer_, position_);
     }
 
     std::vector<std::byte> fieldInfoView::readStream() const {
