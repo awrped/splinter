@@ -2,6 +2,7 @@
 
 #include "../memory/processMemory.h"
 #include "../memory/remoteProcess.h"
+#include "../util/stringLookup.h"
 #include "vmConstants.h"
 #include "vmTypes.h"
 
@@ -102,6 +103,9 @@ namespace splinter::engine::hotspot {
 
         std::string lastError_;
         std::vector<vmStructEntry> fields_;
+        // type name -> field name -> index into fields_, every view accessor hits this
+        // so a linear scan over ~1500 entries per read is not affordable
+        util::stringMap<util::stringMap<std::size_t> > fieldLookup_;
         vmTypes types_;
         vmConstants constants_;
         vmStructLayout structLayout_{};

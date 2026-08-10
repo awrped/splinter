@@ -4,6 +4,7 @@ namespace splinter::engine::hotspot {
     bool vmStructs::refresh(const memory::remoteProcess &process) {
         lastError_.clear();
         fields_.clear();
+        fieldLookup_.clear();
         types_.clear();
         constants_.clear();
 
@@ -35,12 +36,13 @@ namespace splinter::engine::hotspot {
     }
 
     const vmStructEntry *vmStructs::findField(std::string_view typeName, std::string_view fieldName) const noexcept {
-        for (const auto &entry: fields_) {
-            if (entry.typeName == typeName && entry.fieldName == fieldName) {
-                return &entry;
-            }
+        const auto type = fieldLookup_.find(typeName);
+        if (type == fieldLookup_.end()) {
+            return nullptr;
         }
-        return nullptr;
+
+        const auto field = type->second.find(fieldName);
+        return field != type->second.end() ? &fields_[field->second] : nullptr;
     }
 
     const vmTypeInfo *vmStructs::findType(std::string_view typeName) const noexcept {
@@ -114,14 +116,17 @@ namespace splinter::engine::hotspot {
                 break;
             }
 
-            fields_.push_back(vmStructEntry{
+            vmStructEntry entry{
                 readRemoteString(memory, decodeScalar<std::uint64_t>(buffer, structLayout_.typeNameOffset)),
                 readRemoteString(memory, fieldNameAddress),
                 readRemoteString(memory, decodeScalar<std::uint64_t>(buffer, structLayout_.typeStringOffset)),
                 decodeScalar<std::int32_t>(buffer, structLayout_.isStaticOffset) != 0,
                 decodeScalar<std::uint64_t>(buffer, structLayout_.offsetOffset),
                 decodeScalar<std::uint64_t>(buffer, structLayout_.addressOffset)
-            });
+            };
+
+            fieldLookup_[entry.typeName].try_emplace(entry.fieldName, fields_.size());
+            fields_.push_back(std::move(entry));
         }
         return true;
     }

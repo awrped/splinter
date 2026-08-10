@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../util/stringLookup.h"
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -30,5 +32,6 @@ namespace splinter::engine::hotspot {
 
     private:
         std::vector<vmTypeInfo> entries_;
+        util::stringMap<std::size_t> lookup_;
     };
 }
