@@ -8,6 +8,7 @@
 #include <format>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 
 namespace splinter::engine::memory {
@@ -211,6 +212,7 @@ namespace splinter::engine::memory {
             processHandle_.reset();
             process_ = {};
             modules_.clear();
+            localModules_.clear();
             lastError_.clear();
         }
 
@@ -241,14 +243,34 @@ namespace splinter::engine::memory {
                 return {};
             }
 
+            // one syscall per character makes vmstruct loading take minutes, read in
+            // chunks instead and clamp each chunk to the page it starts in so a string
+            // that ends near unmapped memory still reads cleanly
+            constexpr std::uint64_t pageSize = 4096;
+            constexpr std::uint64_t maxChunk = 256;
+
             std::string result;
             result.reserve(std::min<std::size_t>(64, maxLength));
-            for (std::size_t index = 0; index < maxLength; ++index) {
-                const char value = static_cast<char>(read(address + index, 1)[0]);
-                if (value == '\0') {
-                    return result;
+
+            std::size_t consumed = 0;
+            while (consumed < maxLength) {
+                const std::uint64_t cursor = address + consumed;
+                const std::uint64_t chunk = std::min({
+                    pageSize - (cursor % pageSize),
+                    maxChunk,
+                    static_cast<std::uint64_t>(maxLength - consumed)
+                });
+
+                const auto buffer = read(cursor, static_cast<std::size_t>(chunk));
+                for (const auto byte: buffer) {
+                    const char value = static_cast<char>(byte);
+                    if (value == '\0') {
+                        return result;
+                    }
+                    result.push_back(value);
                 }
-                result.push_back(value);
+
+                consumed += static_cast<std::size_t>(chunk);
             }
 
             throw std::runtime_error(std::format("Remote string at 0x{:X} exceeded {} bytes", address, maxLength));
@@ -260,19 +282,13 @@ namespace splinter::engine::memory {
                 throw std::runtime_error(std::format("Module {} is not loaded in target process", narrow(moduleName)));
             }
 
-            detail::uniqueModule
-                    localModule(LoadLibraryExW(module->path.c_str(), nullptr, DONT_RESOLVE_DLL_REFERENCES));
-            if (!localModule) {
-                throw std::runtime_error(
-                    detail::lastErrorMessage(std::format("LoadLibraryExW failed for {}", narrow(module->path))));
-            }
-
-            FARPROC symbol = GetProcAddress(localModule.get(), std::string(exportName).c_str());
+            const HMODULE localModule = localModuleFor(*module);
+            FARPROC symbol = GetProcAddress(localModule, std::string(exportName).c_str());
             if (symbol == nullptr) {
                 throw std::runtime_error(std::format("Export {} was not found in {}", exportName, narrow(moduleName)));
             }
 
-            const auto localBase = reinterpret_cast<std::uintptr_t>(localModule.get());
+            const auto localBase = reinterpret_cast<std::uintptr_t>(localModule);
             const auto localSymbol = reinterpret_cast<std::uintptr_t>(symbol);
             return module->base + (localSymbol - localBase);
         }
@@ -293,8 +309,29 @@ namespace splinter::engine::memory {
         moduleMap modules_{};
         std::string lastError_;
         detail::uniqueHandle processHandle_{};
+        mutable std::unordered_map<std::wstring, detail::uniqueModule> localModules_;
 
     private:
+        // export resolution maps the target module into this process, keep the mapping
+        // around instead of paying a LoadLibraryExW for every symbol
+        [[nodiscard]] HMODULE localModuleFor(const moduleInfo &module) const {
+            const auto cached = localModules_.find(module.path);
+            if (cached != localModules_.end()) {
+                return cached->second.get();
+            }
+
+            detail::uniqueModule loaded(
+                LoadLibraryExW(module.path.c_str(), nullptr, DONT_RESOLVE_DLL_REFERENCES));
+            if (!loaded) {
+                throw std::runtime_error(
+                    detail::lastErrorMessage(std::format("LoadLibraryExW failed for {}", narrow(module.path))));
+            }
+
+            const HMODULE handle = loaded.get();
+            localModules_.emplace(module.path, std::move(loaded));
+            return handle;
+        }
+
         bool tryAttachProcess(const PROCESSENTRY32W &entry) {
             detail::uniqueHandle processHandle(
                 OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, entry.th32ProcessID));
