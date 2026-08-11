@@ -241,10 +241,20 @@ namespace splinter::engine::bytecode {
             return decodeConstantPoolOperand(constantPool, symbols, *cpIndex);
         }
 
+        [[nodiscard]] std::string classfilePoolOperand(const hotspot::constantPoolView *constantPool,
+                                                       const hotspot::symbolTable *symbols,
+                                                       std::uint16_t poolIndex) {
+            if (constantPool != nullptr && symbols != nullptr) {
+                return decodeConstantPoolOperand(*constantPool, *symbols, poolIndex);
+            }
+            return "cp=#" + std::to_string(poolIndex);
+        }
+
         [[nodiscard]] std::string decodeInstruction(const std::vector<std::uint8_t> &code,
                                                     std::size_t index,
                                                     const hotspot::constantPoolView *constantPool,
-                                                    const hotspot::symbolTable *symbols) {
+                                                    const hotspot::symbolTable *symbols,
+                                                    bool rewritten) {
             const auto opcode = code[index];
             switch (opcode) {
                 case 0x10:
@@ -288,6 +298,10 @@ namespace splinter::engine::bytecode {
                 case 0xd9:
                 case 0xda:
                 case 0xdb: {
+                    if (!rewritten) {
+                        return classfilePoolOperand(constantPool, symbols, readU16(code, index + 1));
+                    }
+
                     const auto fieldIndex = readNativeU16(code, index + 1);
                     if (constantPool != nullptr && symbols != nullptr) {
                         const auto cacheAddress = constantPool->cacheAddress();
@@ -326,6 +340,10 @@ namespace splinter::engine::bytecode {
                 case 0xb8:
                 case 0xe3:
                 case 0xe9: {
+                    if (!rewritten) {
+                        return classfilePoolOperand(constantPool, symbols, readU16(code, index + 1));
+                    }
+
                     const auto methodIndex = readNativeU16(code, index + 1);
                     if (constantPool != nullptr && symbols != nullptr) {
                         const auto cacheAddress = constantPool->cacheAddress();
@@ -342,6 +360,11 @@ namespace splinter::engine::bytecode {
                     return "methodIndex=" + std::to_string(methodIndex);
                 }
                 case 0xb9: {
+                    if (!rewritten) {
+                        return joinWithSpaces(classfilePoolOperand(constantPool, symbols, readU16(code, index + 1)),
+                                              "count=" + std::to_string(byteAt(code, index + 3)));
+                    }
+
                     const auto methodIndex = readNativeU16(code, index + 1);
                     const auto argumentCount = byteAt(code, index + 3);
                     if (constantPool != nullptr && symbols != nullptr) {
@@ -361,6 +384,10 @@ namespace splinter::engine::bytecode {
                                           "count=" + std::to_string(argumentCount));
                 }
                 case 0xba: {
+                    if (!rewritten) {
+                        return classfilePoolOperand(constantPool, symbols, readU16(code, index + 1));
+                    }
+
                     const auto encodedIndex = readNativeU32(code, index + 1);
                     if (constantPool != nullptr && symbols != nullptr) {
                         const auto cacheAddress = constantPool->cacheAddress();
@@ -489,7 +516,8 @@ namespace splinter::engine::bytecode {
 
         [[nodiscard]] std::vector<instructionInfo> decodeImpl(const std::vector<std::uint8_t> &code,
                                                               const hotspot::constantPoolView *constantPool,
-                                                              const hotspot::symbolTable *symbols) {
+                                                              const hotspot::symbolTable *symbols,
+                                                              bool rewritten) {
             std::vector<instructionInfo> instructions;
             std::size_t index = 0;
             while (index < code.size()) {
@@ -501,7 +529,7 @@ namespace splinter::engine::bytecode {
                 instruction.opcode = opcode;
                 instruction.mnemonic = std::string(bytecodeTable::name(opcode));
                 instruction.length = std::max<std::size_t>(1, length);
-                instruction.operandText = decodeInstruction(code, index, constantPool, symbols);
+                instruction.operandText = decodeInstruction(code, index, constantPool, symbols, rewritten);
                 instructions.push_back(std::move(instruction));
 
                 index += std::max<std::size_t>(1, length);
@@ -530,13 +558,14 @@ namespace splinter::engine::bytecode {
     }
 
     std::vector<instructionInfo> bytecodePrinter::decode(const std::vector<std::uint8_t> &code) {
-        return bytecodePrinterDetail::decodeImpl(code, nullptr, nullptr);
+        return bytecodePrinterDetail::decodeImpl(code, nullptr, nullptr, true);
     }
 
     std::vector<instructionInfo> bytecodePrinter::decode(const std::vector<std::uint8_t> &code,
                                                          const hotspot::constantPoolView &constantPool,
-                                                         const hotspot::symbolTable &symbols) {
-        return bytecodePrinterDetail::decodeImpl(code, &constantPool, &symbols);
+                                                         const hotspot::symbolTable &symbols,
+                                                         bool rewritten) {
+        return bytecodePrinterDetail::decodeImpl(code, &constantPool, &symbols, rewritten);
     }
 
     std::string bytecodePrinter::print(const std::vector<std::uint8_t> &code) {
@@ -545,7 +574,8 @@ namespace splinter::engine::bytecode {
 
     std::string bytecodePrinter::print(const std::vector<std::uint8_t> &code,
                                        const hotspot::constantPoolView &constantPool,
-                                       const hotspot::symbolTable &symbols) {
-        return bytecodePrinterDetail::printImpl(decode(code, constantPool, symbols));
+                                       const hotspot::symbolTable &symbols,
+                                       bool rewritten) {
+        return bytecodePrinterDetail::printImpl(decode(code, constantPool, symbols, rewritten));
     }
 }

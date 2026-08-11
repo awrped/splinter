@@ -27,6 +27,24 @@ namespace splinter::engine::hotspot {
                    : std::nullopt;
     }
 
+    std::optional<std::uint8_t> instanceKlassView::initState() const {
+        const vmStructEntry *field = vm_->findField("InstanceKlass", "_init_state");
+        // hotspot declares this as a u1 today and as a wider enum in older builds,
+        // the low byte carries the state either way on little endian
+        return field != nullptr
+                   ? std::optional<std::uint8_t>(memory_->read<std::uint8_t>(address_ + field->offset))
+                   : std::nullopt;
+    }
+
+    std::optional<bool> instanceKlassView::isLinked() const {
+        const auto state = initState();
+        const auto linked = vm_->constants().findInt("InstanceKlass::linked");
+        if (!state || !linked) {
+            return std::nullopt;
+        }
+        return static_cast<std::int32_t>(*state) >= *linked;
+    }
+
     std::optional<std::int32_t> instanceKlassView::javaFieldCount() const {
         const auto streamAddress = fieldInfoStreamAddress();
         if (!streamAddress || *streamAddress == 0) {

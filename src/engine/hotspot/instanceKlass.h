@@ -19,6 +19,12 @@ namespace splinter::engine::hotspot {
 
         [[nodiscard]] std::optional<std::uint64_t> fieldInfoStreamAddress() const;
 
+        [[nodiscard]] std::optional<std::uint8_t> initState() const;
+
+        // bytecode is only rewritten once the class is linked, before that the
+        // operands are still classfile constant pool indexes
+        [[nodiscard]] std::optional<bool> isLinked() const;
+
         [[nodiscard]] std::optional<std::int32_t> javaFieldCount() const;
 
         [[nodiscard]] std::optional<std::int32_t> totalFieldCount() const;

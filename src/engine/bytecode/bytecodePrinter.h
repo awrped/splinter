@@ -24,14 +24,19 @@ namespace splinter::engine::bytecode {
 
         [[nodiscard]] static std::vector<instructionInfo> decode(const std::vector<std::uint8_t> &code);
 
+        // rewritten selects how operands are read. linked classes carry hotspot's
+        // rewritten operands (native byte order cache indexes), classes that are
+        // only loaded still carry big endian classfile constant pool indexes
         [[nodiscard]] static std::vector<instructionInfo> decode(const std::vector<std::uint8_t> &code,
                                                                  const hotspot::constantPoolView &constantPool,
-                                                                 const hotspot::symbolTable &symbols);
+                                                                 const hotspot::symbolTable &symbols,
+                                                                 bool rewritten = true);
 
         [[nodiscard]] static std::string print(const std::vector<std::uint8_t> &code);
 
         [[nodiscard]] static std::string print(const std::vector<std::uint8_t> &code,
                                                const hotspot::constantPoolView &constantPool,
-                                               const hotspot::symbolTable &symbols);
+                                               const hotspot::symbolTable &symbols,
+                                               bool rewritten = true);
     };
 }
