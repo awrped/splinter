@@ -26,10 +26,12 @@ namespace splinter::engine::hotspot {
     }
 
     std::optional<std::uint16_t> constMethodView::codeSize() const {
-        const vmStructEntry *field = vm_->findField("ConstMethod", "_code_size");
-        return field != nullptr
-                   ? std::optional<std::uint16_t>(memory_->read<std::uint16_t>(address_ + field->offset))
-                   : std::nullopt;
+        return codeSize_.get([this]() -> std::optional<std::uint16_t> {
+            const vmStructEntry *field = vm_->findField("ConstMethod", "_code_size");
+            return field != nullptr
+                       ? std::optional<std::uint16_t>(memory_->read<std::uint16_t>(address_ + field->offset))
+                       : std::nullopt;
+        });
     }
 
     std::optional<std::uint16_t> constMethodView::nameIndex() const {
@@ -61,10 +63,12 @@ namespace splinter::engine::hotspot {
     }
 
     std::optional<std::uint32_t> constMethodView::flags() const {
-        const vmStructEntry *field = vm_->findField("ConstMethod", "_flags._flags");
-        return field != nullptr
-                   ? std::optional<std::uint32_t>(memory_->read<std::uint32_t>(address_ + field->offset))
-                   : std::nullopt;
+        return flags_.get([this]() -> std::optional<std::uint32_t> {
+            const vmStructEntry *field = vm_->findField("ConstMethod", "_flags._flags");
+            return field != nullptr
+                       ? std::optional<std::uint32_t>(memory_->read<std::uint32_t>(address_ + field->offset))
+                       : std::nullopt;
+        });
     }
 
     std::optional<std::uint16_t> constMethodView::genericSignatureIndex() const {
@@ -345,11 +349,13 @@ namespace splinter::engine::hotspot {
     }
 
     std::optional<std::uint64_t> constMethodView::constMethodEnd() const {
-        const auto sizeInWords = constMethodSizeWords();
-        return sizeInWords
-                   ? std::optional<std::uint64_t>(
-                       address_ + static_cast<std::uint64_t>(*sizeInWords) * sizeof(std::uint64_t))
-                   : std::nullopt;
+        return constMethodEnd_.get([this]() -> std::optional<std::uint64_t> {
+            const auto sizeInWords = constMethodSizeWords();
+            return sizeInWords
+                       ? std::optional<std::uint64_t>(
+                           address_ + static_cast<std::uint64_t>(*sizeInWords) * sizeof(std::uint64_t))
+                       : std::nullopt;
+        });
     }
 
     std::optional<std::uint64_t> constMethodView::codeEndAddress() const {
@@ -363,17 +369,19 @@ namespace splinter::engine::hotspot {
     }
 
     std::optional<std::uint64_t> constMethodView::lastU2ElementAddress() const {
-        const auto endAddress = constMethodEnd();
-        if (!endAddress) {
-            return std::nullopt;
-        }
+        return lastU2Element_.get([this]() -> std::optional<std::uint64_t> {
+            const auto endAddress = constMethodEnd();
+            if (!endAddress) {
+                return std::nullopt;
+            }
 
-        std::uint64_t pointerCount = 0;
-        pointerCount += hasMethodAnnotations() ? 1 : 0;
-        pointerCount += hasParameterAnnotations() ? 1 : 0;
-        pointerCount += hasTypeAnnotations() ? 1 : 0;
-        pointerCount += hasDefaultAnnotations() ? 1 : 0;
-        return *endAddress - pointerCount * sizeof(std::uint64_t) - sizeof(std::uint16_t);
+            std::uint64_t pointerCount = 0;
+            pointerCount += hasMethodAnnotations() ? 1 : 0;
+            pointerCount += hasParameterAnnotations() ? 1 : 0;
+            pointerCount += hasTypeAnnotations() ? 1 : 0;
+            pointerCount += hasDefaultAnnotations() ? 1 : 0;
+            return *endAddress - pointerCount * sizeof(std::uint64_t) - sizeof(std::uint16_t);
+        });
     }
 
     std::optional<std::uint64_t> constMethodView::methodParametersLengthAddress() const {
@@ -390,13 +398,15 @@ namespace splinter::engine::hotspot {
     }
 
     std::optional<std::uint64_t> constMethodView::methodParametersStartAddress() const {
-        const auto lengthAddress = methodParametersLengthAddress();
-        if (!lengthAddress) {
-            return std::nullopt;
-        }
+        return methodParametersStart_.get([this]() -> std::optional<std::uint64_t> {
+            const auto lengthAddress = methodParametersLengthAddress();
+            if (!lengthAddress) {
+                return std::nullopt;
+            }
 
-        const auto count = memory_->read<std::uint16_t>(*lengthAddress);
-        return *lengthAddress - static_cast<std::uint64_t>(count) * 2 * sizeof(std::uint16_t);
+            const auto count = memory_->read<std::uint16_t>(*lengthAddress);
+            return *lengthAddress - static_cast<std::uint64_t>(count) * 2 * sizeof(std::uint16_t);
+        });
     }
 
     std::optional<std::uint64_t> constMethodView::checkedExceptionsLengthAddress() const {
@@ -417,13 +427,15 @@ namespace splinter::engine::hotspot {
     }
 
     std::optional<std::uint64_t> constMethodView::checkedExceptionsStartAddress() const {
-        const auto lengthAddress = checkedExceptionsLengthAddress();
-        if (!lengthAddress) {
-            return std::nullopt;
-        }
+        return checkedExceptionsStart_.get([this]() -> std::optional<std::uint64_t> {
+            const auto lengthAddress = checkedExceptionsLengthAddress();
+            if (!lengthAddress) {
+                return std::nullopt;
+            }
 
-        const auto count = memory_->read<std::uint16_t>(*lengthAddress);
-        return *lengthAddress - static_cast<std::uint64_t>(count) * sizeof(std::uint16_t);
+            const auto count = memory_->read<std::uint16_t>(*lengthAddress);
+            return *lengthAddress - static_cast<std::uint64_t>(count) * sizeof(std::uint16_t);
+        });
     }
 
     std::optional<std::uint64_t> constMethodView::exceptionTableLengthAddress() const {
@@ -449,13 +461,15 @@ namespace splinter::engine::hotspot {
     }
 
     std::optional<std::uint64_t> constMethodView::exceptionTableStartAddress() const {
-        const auto lengthAddress = exceptionTableLengthAddress();
-        if (!lengthAddress) {
-            return std::nullopt;
-        }
+        return exceptionTableStart_.get([this]() -> std::optional<std::uint64_t> {
+            const auto lengthAddress = exceptionTableLengthAddress();
+            if (!lengthAddress) {
+                return std::nullopt;
+            }
 
-        const auto count = memory_->read<std::uint16_t>(*lengthAddress);
-        return *lengthAddress - static_cast<std::uint64_t>(count) * 4 * sizeof(std::uint16_t);
+            const auto count = memory_->read<std::uint16_t>(*lengthAddress);
+            return *lengthAddress - static_cast<std::uint64_t>(count) * 4 * sizeof(std::uint16_t);
+        });
     }
 
     std::optional<std::uint64_t> constMethodView::localVariableTableLengthAddress() const {
@@ -486,13 +500,15 @@ namespace splinter::engine::hotspot {
     }
 
     std::optional<std::uint64_t> constMethodView::localVariableTableStartAddress() const {
-        const auto lengthAddress = localVariableTableLengthAddress();
-        if (!lengthAddress) {
-            return std::nullopt;
-        }
+        return localVariableTableStart_.get([this]() -> std::optional<std::uint64_t> {
+            const auto lengthAddress = localVariableTableLengthAddress();
+            if (!lengthAddress) {
+                return std::nullopt;
+            }
 
-        const auto count = memory_->read<std::uint16_t>(*lengthAddress);
-        return *lengthAddress - static_cast<std::uint64_t>(count) * 6 * sizeof(std::uint16_t);
+            const auto count = memory_->read<std::uint16_t>(*lengthAddress);
+            return *lengthAddress - static_cast<std::uint64_t>(count) * 6 * sizeof(std::uint16_t);
+        });
     }
 
     std::optional<std::int32_t> constMethodView::metaspaceArrayLength(std::uint64_t address) const {

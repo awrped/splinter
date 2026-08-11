@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../util/cachedValue.h"
 #include "vmStructs.h"
 
 #include <cstdint>
@@ -167,5 +168,17 @@ namespace splinter::engine::hotspot {
         const memory::processMemory *memory_ = nullptr;
         const vmStructs *vm_ = nullptr;
         std::uint64_t address_ = 0;
+
+        // the trailing tables are found by walking backwards from the end of the
+        // ConstMethod, so every lookup used to re-read the flags and every table
+        // ahead of the one being asked for
+        util::cachedValue<std::optional<std::uint32_t> > flags_;
+        util::cachedValue<std::optional<std::uint16_t> > codeSize_;
+        util::cachedValue<std::optional<std::uint64_t> > constMethodEnd_;
+        util::cachedValue<std::optional<std::uint64_t> > lastU2Element_;
+        util::cachedValue<std::optional<std::uint64_t> > methodParametersStart_;
+        util::cachedValue<std::optional<std::uint64_t> > checkedExceptionsStart_;
+        util::cachedValue<std::optional<std::uint64_t> > exceptionTableStart_;
+        util::cachedValue<std::optional<std::uint64_t> > localVariableTableStart_;
     };
 }
