@@ -1,5 +1,14 @@
 #include "remoteProcess.h"
 
+// windows.h defines min and max as macros, which breaks any std::min call that is
+// not parenthesised and drags in far more than this file needs
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
 #include <windows.h>
 #include <tlhelp32.h>
 
@@ -294,16 +303,14 @@ namespace splinter::engine::memory {
             constexpr std::uint64_t maxChunk = 256;
 
             std::string result;
-            result.reserve(std::min<std::size_t>(64, maxLength));
+            result.reserve((std::min<std::size_t>)(64, maxLength));
 
             std::size_t consumed = 0;
             while (consumed < maxLength) {
                 const std::uint64_t cursor = address + consumed;
-                const std::uint64_t chunk = std::min({
-                    pageSize - (cursor % pageSize),
-                    maxChunk,
-                    static_cast<std::uint64_t>(maxLength - consumed)
-                });
+                std::uint64_t chunk = pageSize - (cursor % pageSize);
+                chunk = (std::min)(chunk, maxChunk);
+                chunk = (std::min)(chunk, static_cast<std::uint64_t>(maxLength - consumed));
 
                 const auto buffer = read(cursor, static_cast<std::size_t>(chunk));
                 for (const auto byte: buffer) {

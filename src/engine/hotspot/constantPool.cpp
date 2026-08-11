@@ -333,7 +333,7 @@ namespace splinter::engine::hotspot {
     std::pair<std::uint16_t, std::uint16_t> constantPoolView::nameAndTypeIndexesAt(std::int32_t index) const {
         const auto raw = rawSlot32(index);
         if (!raw) {
-            return {0, 0};
+            return {};
         }
         return {lowShort(*raw), highShort(*raw)};
     }
