@@ -165,7 +165,7 @@ namespace splinter::engine::hotspot {
 
         [[nodiscard]] annotationBlobInfo annotationBlob(std::uint64_t slotFromEnd) const;
 
-        const memory::processMemory *memory_ = nullptr;
+        memory::processMemory memory_;
         const vmStructs *vm_ = nullptr;
         std::uint64_t address_ = 0;
 

@@ -31,7 +31,7 @@ namespace splinter::engine::hotspot {
         [[nodiscard]] std::string signature(const constantPoolView &constantPool, const symbolTable &symbols) const;
 
     private:
-        const memory::processMemory *memory_ = nullptr;
+        memory::processMemory memory_;
         const vmStructs *vm_ = nullptr;
         std::uint64_t address_ = 0;
     };

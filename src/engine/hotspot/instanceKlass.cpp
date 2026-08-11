@@ -9,21 +9,21 @@ namespace splinter::engine::hotspot {
     std::optional<std::uint64_t> instanceKlassView::constantsAddress() const {
         const vmStructEntry *field = vm_->findField("InstanceKlass", "_constants");
         return field != nullptr
-                   ? std::optional<std::uint64_t>(memory_->read<std::uint64_t>(address_ + field->offset))
+                   ? std::optional<std::uint64_t>(memory_.read<std::uint64_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
     std::optional<std::uint64_t> instanceKlassView::methodsArrayAddress() const {
         const vmStructEntry *field = vm_->findField("InstanceKlass", "_methods");
         return field != nullptr
-                   ? std::optional<std::uint64_t>(memory_->read<std::uint64_t>(address_ + field->offset))
+                   ? std::optional<std::uint64_t>(memory_.read<std::uint64_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
     std::optional<std::uint64_t> instanceKlassView::fieldInfoStreamAddress() const {
         const vmStructEntry *field = vm_->findField("InstanceKlass", "_fieldinfo_stream");
         return field != nullptr
-                   ? std::optional<std::uint64_t>(memory_->read<std::uint64_t>(address_ + field->offset))
+                   ? std::optional<std::uint64_t>(memory_.read<std::uint64_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
@@ -32,7 +32,7 @@ namespace splinter::engine::hotspot {
         // hotspot declares this as a u1 today and as a wider enum in older builds,
         // the low byte carries the state either way on little endian
         return field != nullptr
-                   ? std::optional<std::uint8_t>(memory_->read<std::uint8_t>(address_ + field->offset))
+                   ? std::optional<std::uint8_t>(memory_.read<std::uint8_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
@@ -51,7 +51,7 @@ namespace splinter::engine::hotspot {
             return std::nullopt;
         }
 
-        const fieldInfoView fields(*memory_, *vm_, *streamAddress);
+        const fieldInfoView fields(memory_, *vm_, *streamAddress);
         const auto count = fields.javaFieldCount();
         return count ? std::optional<std::int32_t>(static_cast<std::int32_t>(*count)) : std::nullopt;
     }
@@ -62,7 +62,7 @@ namespace splinter::engine::hotspot {
             return std::nullopt;
         }
 
-        const fieldInfoView fields(*memory_, *vm_, *streamAddress);
+        const fieldInfoView fields(memory_, *vm_, *streamAddress);
         const auto count = fields.totalFieldCount();
         return count ? std::optional<std::int32_t>(static_cast<std::int32_t>(*count)) : std::nullopt;
     }
@@ -76,10 +76,10 @@ namespace splinter::engine::hotspot {
             return result;
         }
 
-        const std::int32_t length = memory_->read<std::int32_t>(*arrayAddress + lengthField->offset);
+        const std::int32_t length = memory_.read<std::int32_t>(*arrayAddress + lengthField->offset);
         result.reserve(length);
         for (std::int32_t index = 0; index < length; ++index) {
-            result.push_back(memory_->read<std::uint64_t>(
+            result.push_back(memory_.read<std::uint64_t>(
                 *arrayAddress + dataField->offset + static_cast<std::uint64_t>(index) * sizeof(std::uint64_t)));
         }
         return result;
@@ -92,8 +92,8 @@ namespace splinter::engine::hotspot {
             return {};
         }
 
-        const constantPoolView constantPool(*memory_, *vm_, *constants);
-        const fieldInfoView fieldInfo(*memory_, *vm_, *streamAddress);
+        const constantPoolView constantPool(memory_, *vm_, *constants);
+        const fieldInfoView fieldInfo(memory_, *vm_, *streamAddress);
         return fieldInfo.decodeAll(constantPool, symbols, limit);
     }
 }

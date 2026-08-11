@@ -11,7 +11,7 @@
 namespace splinter::engine::hotspot {
     constantPoolView::constantPoolView(const memory::processMemory &memory, const vmStructs &vm,
                                        std::uint64_t address) noexcept
-        : memory_(&memory), vm_(&vm), address_(address) {
+        : memory_(memory), vm_(&vm), address_(address) {
     }
 
     std::uint64_t constantPoolView::address() const noexcept {
@@ -19,7 +19,7 @@ namespace splinter::engine::hotspot {
     }
 
     const memory::processMemory &constantPoolView::memory() const noexcept {
-        return *memory_;
+        return memory_;
     }
 
     const vmStructs &constantPoolView::vm() const noexcept {
@@ -30,7 +30,7 @@ namespace splinter::engine::hotspot {
         return length_.get([this]() -> std::optional<std::int32_t> {
             const vmStructEntry *field = vm_->findField("ConstantPool", "_length");
             return field != nullptr
-                       ? std::optional<std::int32_t>(memory_->read<std::int32_t>(address_ + field->offset))
+                       ? std::optional<std::int32_t>(memory_.read<std::int32_t>(address_ + field->offset))
                        : std::nullopt;
         });
     }
@@ -47,35 +47,35 @@ namespace splinter::engine::hotspot {
     std::optional<std::uint64_t> constantPoolView::tagsAddress() const {
         const vmStructEntry *field = vm_->findField("ConstantPool", "_tags");
         return field != nullptr
-                   ? std::optional<std::uint64_t>(memory_->read<std::uint64_t>(address_ + field->offset))
+                   ? std::optional<std::uint64_t>(memory_.read<std::uint64_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
     std::optional<std::uint64_t> constantPoolView::resolvedKlassesAddress() const {
         const vmStructEntry *field = vm_->findField("ConstantPool", "_resolved_klasses");
         return field != nullptr
-                   ? std::optional<std::uint64_t>(memory_->read<std::uint64_t>(address_ + field->offset))
+                   ? std::optional<std::uint64_t>(memory_.read<std::uint64_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
     std::optional<std::uint64_t> constantPoolView::poolHolderAddress() const {
         const vmStructEntry *field = vm_->findField("ConstantPool", "_pool_holder");
         return field != nullptr
-                   ? std::optional<std::uint64_t>(memory_->read<std::uint64_t>(address_ + field->offset))
+                   ? std::optional<std::uint64_t>(memory_.read<std::uint64_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
     std::optional<std::uint64_t> constantPoolView::cacheAddress() const {
         const vmStructEntry *field = vm_->findField("ConstantPool", "_cache");
         return field != nullptr
-                   ? std::optional<std::uint64_t>(memory_->read<std::uint64_t>(address_ + field->offset))
+                   ? std::optional<std::uint64_t>(memory_.read<std::uint64_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
     std::optional<std::uint64_t> constantPoolView::operandsAddress() const {
         const vmStructEntry *field = vm_->findField("ConstantPool", "_operands");
         return field != nullptr
-                   ? std::optional<std::uint64_t>(memory_->read<std::uint64_t>(address_ + field->offset))
+                   ? std::optional<std::uint64_t>(memory_.read<std::uint64_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
@@ -85,7 +85,7 @@ namespace splinter::engine::hotspot {
         if (!tags || dataField == nullptr || !isValidIndex(index)) {
             return std::nullopt;
         }
-        return memory_->read<std::uint8_t>(*tags + dataField->offset + static_cast<std::uint64_t>(index));
+        return memory_.read<std::uint8_t>(*tags + dataField->offset + static_cast<std::uint64_t>(index));
     }
 
     std::optional<std::uint64_t> constantPoolView::rawSlotPointer(std::int32_t index) const {
@@ -93,7 +93,7 @@ namespace splinter::engine::hotspot {
         if (!typeSize || !isValidIndex(index)) {
             return std::nullopt;
         }
-        return memory_->read<std::uint64_t>(
+        return memory_.read<std::uint64_t>(
             address_ + *typeSize + static_cast<std::uint64_t>(index) * sizeof(std::uint64_t));
     }
 
@@ -102,7 +102,7 @@ namespace splinter::engine::hotspot {
         if (!typeSize || !isValidIndex(index)) {
             return std::nullopt;
         }
-        return memory_->read<std::uint32_t>(
+        return memory_.read<std::uint32_t>(
             address_ + *typeSize + static_cast<std::uint64_t>(index) * sizeof(std::uint64_t));
     }
 
@@ -481,7 +481,7 @@ namespace splinter::engine::hotspot {
             return std::nullopt;
         }
 
-        return memory_->read<std::uint64_t>(
+        return memory_.read<std::uint64_t>(
             *resolvedKlasses + dataField->offset + static_cast<std::uint64_t>(index) * sizeof(std::uint64_t));
     }
 
@@ -496,8 +496,8 @@ namespace splinter::engine::hotspot {
         const std::uint64_t slotAddress = baseAddress + static_cast<std::uint64_t>(bootstrapMethodAttributeIndex) * 2ULL
                                           *
                                           sizeof(std::uint16_t);
-        const std::uint16_t low = memory_->read<std::uint16_t>(slotAddress);
-        const std::uint16_t high = memory_->read<std::uint16_t>(slotAddress + sizeof(std::uint16_t));
+        const std::uint16_t low = memory_.read<std::uint16_t>(slotAddress);
+        const std::uint16_t high = memory_.read<std::uint16_t>(slotAddress + sizeof(std::uint16_t));
         return static_cast<std::uint32_t>(low) | (static_cast<std::uint32_t>(high) << 16U);
     }
 
@@ -508,7 +508,7 @@ namespace splinter::engine::hotspot {
             return std::nullopt;
         }
 
-        return memory_->read<std::uint16_t>(
+        return memory_.read<std::uint16_t>(
             *operands + dataField->offset + static_cast<std::uint64_t>(offset) * sizeof(std::uint16_t));
     }
 

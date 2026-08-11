@@ -81,7 +81,7 @@ namespace splinter::engine::hotspot {
                                                  const constantPoolView &constantPool,
                                                  const symbolTable &symbols) const;
 
-        const memory::processMemory *memory_ = nullptr;
+        memory::processMemory memory_;
         const vmStructs *vm_ = nullptr;
         std::uint64_t address_ = 0;
     };

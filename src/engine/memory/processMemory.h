@@ -9,6 +9,8 @@
 namespace splinter::engine::memory {
     class remoteProcess;
 
+    // a cheap copyable handle onto a remoteProcess, views hold it by value so they
+    // cannot outlive a temporary the caller passed in
     class processMemory {
     public:
         explicit processMemory(const remoteProcess &process) noexcept;

@@ -55,7 +55,7 @@ namespace splinter::engine::hotspot {
                                                                        std::uint16_t entryIndex,
                                                                        std::string_view fieldTypeName) const;
 
-        const memory::processMemory *memory_ = nullptr;
+        memory::processMemory memory_;
         const vmStructs *vm_ = nullptr;
         std::uint64_t address_ = 0;
     };

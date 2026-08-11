@@ -29,7 +29,7 @@ namespace splinter::engine::hotspot {
 
     fieldInfoView::fieldInfoView(const memory::processMemory &memory, const vmStructs &vm,
                                  std::uint64_t streamAddress) noexcept
-        : memory_(&memory), vm_(&vm), address_(streamAddress) {
+        : memory_(memory), vm_(&vm), address_(streamAddress) {
     }
 
     std::uint64_t fieldInfoView::address() const noexcept {
@@ -126,12 +126,12 @@ namespace splinter::engine::hotspot {
             throw std::runtime_error("Missing Array<u1> VMStruct metadata for fieldinfo decoding");
         }
 
-        const std::int32_t length = memory_->read<std::int32_t>(address_ + lengthField->offset);
+        const std::int32_t length = memory_.read<std::int32_t>(address_ + lengthField->offset);
         if (length <= 0) {
             return {};
         }
 
-        return memory_->readBuffer(address_ + dataField->offset, static_cast<std::size_t>(length));
+        return memory_.readBuffer(address_ + dataField->offset, static_cast<std::size_t>(length));
     }
 
     decodedFieldInfo fieldInfoView::decodeOne(unsigned5Reader &reader,

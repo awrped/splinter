@@ -11,7 +11,7 @@ namespace splinter::engine::hotspot {
 
     classLoaderDataView::classLoaderDataView(const memory::processMemory &memory, const vmStructs &vm,
                                              std::uint64_t address) noexcept
-        : memory_(&memory), vm_(&vm), address_(address) {
+        : memory_(memory), vm_(&vm), address_(address) {
     }
 
     std::uint64_t classLoaderDataView::address() const noexcept {
@@ -21,14 +21,14 @@ namespace splinter::engine::hotspot {
     std::optional<std::uint64_t> classLoaderDataView::nextAddress() const {
         const vmStructEntry *field = vm_->findField("ClassLoaderData", "_next");
         return field != nullptr
-                   ? std::optional<std::uint64_t>(memory_->read<std::uint64_t>(address_ + field->offset))
+                   ? std::optional<std::uint64_t>(memory_.read<std::uint64_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
     std::optional<std::uint64_t> classLoaderDataView::klassesAddress() const {
         const vmStructEntry *field = vm_->findField("ClassLoaderData", "_klasses");
         return field != nullptr
-                   ? std::optional<std::uint64_t>(memory_->read<std::uint64_t>(address_ + field->offset))
+                   ? std::optional<std::uint64_t>(memory_.read<std::uint64_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
@@ -51,7 +51,7 @@ namespace splinter::engine::hotspot {
             if (limit != 0 && result.size() >= limit) {
                 break;
             }
-            current = memory_->read<std::uint64_t>(current + nextLinkField->offset);
+            current = memory_.read<std::uint64_t>(current + nextLinkField->offset);
         }
         return result;
     }

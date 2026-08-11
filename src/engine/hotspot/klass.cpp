@@ -5,7 +5,7 @@
 
 namespace splinter::engine::hotspot {
     klassView::klassView(const memory::processMemory &memory, const vmStructs &vm, std::uint64_t address) noexcept
-        : memory_(&memory), vm_(&vm), address_(address) {
+        : memory_(memory), vm_(&vm), address_(address) {
     }
 
     std::uint64_t klassView::address() const noexcept {
@@ -17,7 +17,7 @@ namespace splinter::engine::hotspot {
         if (field == nullptr || field->isStatic) {
             return std::nullopt;
         }
-        return memory_->read<std::int32_t>(address_ + field->offset);
+        return memory_.read<std::int32_t>(address_ + field->offset);
     }
 
     bool klassView::isInstanceKlass() const {
@@ -30,7 +30,7 @@ namespace splinter::engine::hotspot {
         if (field == nullptr || field->isStatic) {
             return std::nullopt;
         }
-        return memory_->read<std::uint64_t>(address_ + field->offset);
+        return memory_.read<std::uint64_t>(address_ + field->offset);
     }
 
     std::string klassView::name(const symbolTable &symbols) const {

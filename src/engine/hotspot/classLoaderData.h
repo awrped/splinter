@@ -28,7 +28,7 @@ namespace splinter::engine::hotspot {
                                                                   std::size_t klassLimit = 0);
 
     private:
-        const memory::processMemory *memory_ = nullptr;
+        memory::processMemory memory_;
         const vmStructs *vm_ = nullptr;
         std::uint64_t address_ = 0;
     };

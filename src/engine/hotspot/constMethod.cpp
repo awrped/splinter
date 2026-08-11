@@ -11,7 +11,7 @@
 namespace splinter::engine::hotspot {
     constMethodView::constMethodView(const memory::processMemory &memory, const vmStructs &vm,
                                      std::uint64_t address) noexcept
-        : memory_(&memory), vm_(&vm), address_(address) {
+        : memory_(memory), vm_(&vm), address_(address) {
     }
 
     std::uint64_t constMethodView::address() const noexcept {
@@ -21,7 +21,7 @@ namespace splinter::engine::hotspot {
     std::optional<std::uint64_t> constMethodView::constantsAddress() const {
         const vmStructEntry *field = vm_->findField("ConstMethod", "_constants");
         return field != nullptr
-                   ? std::optional<std::uint64_t>(memory_->read<std::uint64_t>(address_ + field->offset))
+                   ? std::optional<std::uint64_t>(memory_.read<std::uint64_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
@@ -29,7 +29,7 @@ namespace splinter::engine::hotspot {
         return codeSize_.get([this]() -> std::optional<std::uint16_t> {
             const vmStructEntry *field = vm_->findField("ConstMethod", "_code_size");
             return field != nullptr
-                       ? std::optional<std::uint16_t>(memory_->read<std::uint16_t>(address_ + field->offset))
+                       ? std::optional<std::uint16_t>(memory_.read<std::uint16_t>(address_ + field->offset))
                        : std::nullopt;
         });
     }
@@ -37,28 +37,28 @@ namespace splinter::engine::hotspot {
     std::optional<std::uint16_t> constMethodView::nameIndex() const {
         const vmStructEntry *field = vm_->findField("ConstMethod", "_name_index");
         return field != nullptr
-                   ? std::optional<std::uint16_t>(memory_->read<std::uint16_t>(address_ + field->offset))
+                   ? std::optional<std::uint16_t>(memory_.read<std::uint16_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
     std::optional<std::uint16_t> constMethodView::signatureIndex() const {
         const vmStructEntry *field = vm_->findField("ConstMethod", "_signature_index");
         return field != nullptr
-                   ? std::optional<std::uint16_t>(memory_->read<std::uint16_t>(address_ + field->offset))
+                   ? std::optional<std::uint16_t>(memory_.read<std::uint16_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
     std::optional<std::uint16_t> constMethodView::maxStack() const {
         const vmStructEntry *field = vm_->findField("ConstMethod", "_max_stack");
         return field != nullptr
-                   ? std::optional<std::uint16_t>(memory_->read<std::uint16_t>(address_ + field->offset))
+                   ? std::optional<std::uint16_t>(memory_.read<std::uint16_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
     std::optional<std::uint16_t> constMethodView::maxLocals() const {
         const vmStructEntry *field = vm_->findField("ConstMethod", "_max_locals");
         return field != nullptr
-                   ? std::optional<std::uint16_t>(memory_->read<std::uint16_t>(address_ + field->offset))
+                   ? std::optional<std::uint16_t>(memory_.read<std::uint16_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
@@ -66,7 +66,7 @@ namespace splinter::engine::hotspot {
         return flags_.get([this]() -> std::optional<std::uint32_t> {
             const vmStructEntry *field = vm_->findField("ConstMethod", "_flags._flags");
             return field != nullptr
-                       ? std::optional<std::uint32_t>(memory_->read<std::uint32_t>(address_ + field->offset))
+                       ? std::optional<std::uint32_t>(memory_.read<std::uint32_t>(address_ + field->offset))
                        : std::nullopt;
         });
     }
@@ -77,7 +77,7 @@ namespace splinter::engine::hotspot {
         }
 
         const auto address = lastU2ElementAddress();
-        return address ? std::optional<std::uint16_t>(memory_->read<std::uint16_t>(*address)) : std::nullopt;
+        return address ? std::optional<std::uint16_t>(memory_.read<std::uint16_t>(*address)) : std::nullopt;
     }
 
     std::string constMethodView::genericSignature(const constantPoolView &constantPool,
@@ -128,22 +128,22 @@ namespace splinter::engine::hotspot {
 
     std::optional<std::uint16_t> constMethodView::checkedExceptionsLength() const {
         const auto address = checkedExceptionsLengthAddress();
-        return address ? std::optional<std::uint16_t>(memory_->read<std::uint16_t>(*address)) : std::nullopt;
+        return address ? std::optional<std::uint16_t>(memory_.read<std::uint16_t>(*address)) : std::nullopt;
     }
 
     std::optional<std::uint16_t> constMethodView::localVariableTableLength() const {
         const auto address = localVariableTableLengthAddress();
-        return address ? std::optional<std::uint16_t>(memory_->read<std::uint16_t>(*address)) : std::nullopt;
+        return address ? std::optional<std::uint16_t>(memory_.read<std::uint16_t>(*address)) : std::nullopt;
     }
 
     std::optional<std::uint16_t> constMethodView::exceptionTableLength() const {
         const auto address = exceptionTableLengthAddress();
-        return address ? std::optional<std::uint16_t>(memory_->read<std::uint16_t>(*address)) : std::nullopt;
+        return address ? std::optional<std::uint16_t>(memory_.read<std::uint16_t>(*address)) : std::nullopt;
     }
 
     std::optional<std::int32_t> constMethodView::methodParametersLength() const {
         const auto address = methodParametersLengthAddress();
-        return address ? std::optional<std::int32_t>(memory_->read<std::uint16_t>(*address)) : std::nullopt;
+        return address ? std::optional<std::int32_t>(memory_.read<std::uint16_t>(*address)) : std::nullopt;
     }
 
     annotationBlobInfo constMethodView::methodAnnotations() const {
@@ -187,7 +187,7 @@ namespace splinter::engine::hotspot {
             return entries;
         }
 
-        const auto buffer = memory_->readBuffer(*lineTableAddress,
+        const auto buffer = memory_.readBuffer(*lineTableAddress,
                                                 static_cast<std::size_t>(*endAddress - *lineTableAddress));
         std::size_t offset = 0;
         std::int32_t bci = 0;
@@ -228,12 +228,12 @@ namespace splinter::engine::hotspot {
         for (std::uint16_t index = 0; index < *count; ++index) {
             const auto entryAddress = *start + static_cast<std::uint64_t>(index) * 6 * sizeof(std::uint16_t);
             localVariableEntry entry{};
-            entry.startBci = memory_->read<std::uint16_t>(entryAddress);
-            entry.length = memory_->read<std::uint16_t>(entryAddress + 2);
-            entry.nameIndex = memory_->read<std::uint16_t>(entryAddress + 4);
-            entry.descriptorIndex = memory_->read<std::uint16_t>(entryAddress + 6);
-            entry.signatureIndex = memory_->read<std::uint16_t>(entryAddress + 8);
-            entry.slot = memory_->read<std::uint16_t>(entryAddress + 10);
+            entry.startBci = memory_.read<std::uint16_t>(entryAddress);
+            entry.length = memory_.read<std::uint16_t>(entryAddress + 2);
+            entry.nameIndex = memory_.read<std::uint16_t>(entryAddress + 4);
+            entry.descriptorIndex = memory_.read<std::uint16_t>(entryAddress + 6);
+            entry.signatureIndex = memory_.read<std::uint16_t>(entryAddress + 8);
+            entry.slot = memory_.read<std::uint16_t>(entryAddress + 10);
             entry.name = entry.nameIndex != 0 ? constantPool.utf8At(entry.nameIndex, symbols) : std::string();
             entry.descriptor =
                     entry.descriptorIndex != 0 ? constantPool.utf8At(entry.descriptorIndex, symbols) : std::string();
@@ -258,10 +258,10 @@ namespace splinter::engine::hotspot {
         for (std::uint16_t index = 0; index < *count; ++index) {
             const auto entryAddress = *start + static_cast<std::uint64_t>(index) * 4 * sizeof(std::uint16_t);
             exceptionTableEntry entry{};
-            entry.startPc = memory_->read<std::uint16_t>(entryAddress);
-            entry.endPc = memory_->read<std::uint16_t>(entryAddress + 2);
-            entry.handlerPc = memory_->read<std::uint16_t>(entryAddress + 4);
-            entry.catchTypeIndex = memory_->read<std::uint16_t>(entryAddress + 6);
+            entry.startPc = memory_.read<std::uint16_t>(entryAddress);
+            entry.endPc = memory_.read<std::uint16_t>(entryAddress + 2);
+            entry.handlerPc = memory_.read<std::uint16_t>(entryAddress + 4);
+            entry.catchTypeIndex = memory_.read<std::uint16_t>(entryAddress + 6);
             entry.catchType = entry.catchTypeIndex != 0
                                   ? constantPool.classNameAt(entry.catchTypeIndex, symbols)
                                   : std::string("any");
@@ -283,7 +283,7 @@ namespace splinter::engine::hotspot {
         entries.reserve(*count);
         for (std::uint16_t index = 0; index < *count; ++index) {
             checkedExceptionEntry entry{};
-            entry.classIndex = memory_->read<std::uint16_t>(
+            entry.classIndex = memory_.read<std::uint16_t>(
                 *start + static_cast<std::uint64_t>(index) * sizeof(std::uint16_t));
             entry.className = entry.classIndex != 0
                                   ? constantPool.classNameAt(entry.classIndex, symbols)
@@ -307,8 +307,8 @@ namespace splinter::engine::hotspot {
         for (std::int32_t index = 0; index < *count; ++index) {
             const auto entryAddress = *start + static_cast<std::uint64_t>(index) * 2 * sizeof(std::uint16_t);
             methodParameterEntry entry{};
-            entry.nameIndex = memory_->read<std::uint16_t>(entryAddress);
-            entry.accessFlags = memory_->read<std::uint16_t>(entryAddress + 2);
+            entry.nameIndex = memory_.read<std::uint16_t>(entryAddress);
+            entry.accessFlags = memory_.read<std::uint16_t>(entryAddress + 2);
             entry.name = entry.nameIndex != 0 ? constantPool.utf8At(entry.nameIndex, symbols) : std::string();
             entries.push_back(std::move(entry));
         }
@@ -324,7 +324,7 @@ namespace splinter::engine::hotspot {
             return result;
         }
 
-        const auto buffer = memory_->readBuffer(address_ + *typeSize, *size);
+        const auto buffer = memory_.readBuffer(address_ + *typeSize, *size);
         result.reserve(buffer.size());
         for (const auto byte: buffer) {
             result.push_back(static_cast<std::uint8_t>(byte));
@@ -344,7 +344,7 @@ namespace splinter::engine::hotspot {
             return std::nullopt;
         }
 
-        const auto sizeInWords = memory_->read<std::int32_t>(address_ + field->offset);
+        const auto sizeInWords = memory_.read<std::int32_t>(address_ + field->offset);
         return sizeInWords > 0 ? std::optional<std::int32_t>(sizeInWords) : std::nullopt;
     }
 
@@ -404,7 +404,7 @@ namespace splinter::engine::hotspot {
                 return std::nullopt;
             }
 
-            const auto count = memory_->read<std::uint16_t>(*lengthAddress);
+            const auto count = memory_.read<std::uint16_t>(*lengthAddress);
             return *lengthAddress - static_cast<std::uint64_t>(count) * 2 * sizeof(std::uint16_t);
         });
     }
@@ -433,7 +433,7 @@ namespace splinter::engine::hotspot {
                 return std::nullopt;
             }
 
-            const auto count = memory_->read<std::uint16_t>(*lengthAddress);
+            const auto count = memory_.read<std::uint16_t>(*lengthAddress);
             return *lengthAddress - static_cast<std::uint64_t>(count) * sizeof(std::uint16_t);
         });
     }
@@ -467,7 +467,7 @@ namespace splinter::engine::hotspot {
                 return std::nullopt;
             }
 
-            const auto count = memory_->read<std::uint16_t>(*lengthAddress);
+            const auto count = memory_.read<std::uint16_t>(*lengthAddress);
             return *lengthAddress - static_cast<std::uint64_t>(count) * 4 * sizeof(std::uint16_t);
         });
     }
@@ -506,7 +506,7 @@ namespace splinter::engine::hotspot {
                 return std::nullopt;
             }
 
-            const auto count = memory_->read<std::uint16_t>(*lengthAddress);
+            const auto count = memory_.read<std::uint16_t>(*lengthAddress);
             return *lengthAddress - static_cast<std::uint64_t>(count) * 6 * sizeof(std::uint16_t);
         });
     }
@@ -517,7 +517,7 @@ namespace splinter::engine::hotspot {
             return std::nullopt;
         }
 
-        return memory_->read<std::int32_t>(address + lengthField->offset);
+        return memory_.read<std::int32_t>(address + lengthField->offset);
     }
 
     annotationBlobInfo constMethodView::annotationBlob(std::uint64_t slotFromEnd) const {
@@ -528,7 +528,7 @@ namespace splinter::engine::hotspot {
         }
 
         const auto pointerAddress = *endAddress - slotFromEnd * sizeof(std::uint64_t);
-        info.address = memory_->read<std::uint64_t>(pointerAddress);
+        info.address = memory_.read<std::uint64_t>(pointerAddress);
         info.length = metaspaceArrayLength(info.address).value_or(0);
         return info;
     }

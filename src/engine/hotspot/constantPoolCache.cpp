@@ -4,7 +4,7 @@ namespace splinter::engine::hotspot {
     constantPoolCacheView::constantPoolCacheView(const memory::processMemory &memory,
                                                  const vmStructs &vm,
                                                  std::uint64_t address) noexcept
-        : memory_(&memory), vm_(&vm), address_(address) {
+        : memory_(memory), vm_(&vm), address_(address) {
     }
 
     std::uint64_t constantPoolCacheView::address() const noexcept {
@@ -28,7 +28,7 @@ namespace splinter::engine::hotspot {
     std::optional<std::uint64_t> constantPoolCacheView::cacheFieldAddress(std::string_view fieldName) const {
         const vmStructEntry *field = vm_->findField("ConstantPoolCache", fieldName);
         return field != nullptr
-                   ? std::optional<std::uint64_t>(memory_->read<std::uint64_t>(address_ + field->offset))
+                   ? std::optional<std::uint64_t>(memory_.read<std::uint64_t>(address_ + field->offset))
                    : std::nullopt;
     }
 
@@ -57,7 +57,7 @@ namespace splinter::engine::hotspot {
     std::optional<std::int32_t> constantPoolCacheView::oldEntryCount() const {
         const vmStructEntry *lengthField = vm_->findField("ConstantPoolCache", "_length");
         return lengthField != nullptr
-                   ? std::optional<std::int32_t>(memory_->read<std::int32_t>(address_ + lengthField->offset))
+                   ? std::optional<std::int32_t>(memory_.read<std::int32_t>(address_ + lengthField->offset))
                    : std::nullopt;
     }
 
@@ -111,12 +111,12 @@ namespace splinter::engine::hotspot {
             return std::nullopt;
         }
 
-        const auto length = memory_->read<std::int32_t>(*mapAddress + lengthField->offset);
+        const auto length = memory_.read<std::int32_t>(*mapAddress + lengthField->offset);
         if (objectIndex >= static_cast<std::uint16_t>(length)) {
             return std::nullopt;
         }
 
-        return memory_->read<std::uint16_t>(*mapAddress + dataField->offset +
+        return memory_.read<std::uint16_t>(*mapAddress + dataField->offset +
                                             static_cast<std::uint64_t>(objectIndex) * sizeof(std::uint16_t));
     }
 
@@ -147,7 +147,7 @@ namespace splinter::engine::hotspot {
             return std::nullopt;
         }
 
-        const auto indices = memory_->read<std::uint64_t>(*entryAddress + indicesOffset);
+        const auto indices = memory_.read<std::uint64_t>(*entryAddress + indicesOffset);
         return static_cast<std::uint16_t>(indices & constantPoolIndexMask);
     }
 
@@ -177,13 +177,13 @@ namespace splinter::engine::hotspot {
             return std::nullopt;
         }
 
-        const auto length = memory_->read<std::int32_t>(arrayAddress + lengthField->offset);
+        const auto length = memory_.read<std::int32_t>(arrayAddress + lengthField->offset);
         if (entryIndex >= static_cast<std::uint16_t>(length)) {
             return std::nullopt;
         }
 
         const auto entryAddress = arrayAddress + dataField->offset +
                                   static_cast<std::uint64_t>(entryIndex) * static_cast<std::uint64_t>(entrySize);
-        return memory_->read<std::uint16_t>(entryAddress + *cpoolIndexOffset);
+        return memory_.read<std::uint16_t>(entryAddress + *cpoolIndexOffset);
     }
 }

@@ -137,7 +137,7 @@ namespace splinter::engine::hotspot {
 
         [[nodiscard]] static std::uint16_t highShort(std::uint32_t value) noexcept;
 
-        const memory::processMemory *memory_ = nullptr;
+        memory::processMemory memory_;
         const vmStructs *vm_ = nullptr;
         std::uint64_t address_ = 0;
         util::cachedValue<std::optional<std::int32_t> > length_;
