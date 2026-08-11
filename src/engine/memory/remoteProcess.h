@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -69,7 +70,7 @@ namespace splinter::engine::memory {
 
     private:
         class implementation;
-        implementation *implementation_ = nullptr;
+        std::unique_ptr<implementation> implementation_;
     };
 
     std::string narrow(std::wstring_view value);

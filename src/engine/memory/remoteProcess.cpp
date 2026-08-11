@@ -427,24 +427,15 @@ namespace splinter::engine::memory {
         }
     };
 
-    remoteProcess::remoteProcess() : implementation_(new implementation()) {
+    remoteProcess::remoteProcess() : implementation_(std::make_unique<implementation>()) {
     }
 
-    remoteProcess::~remoteProcess() {
-        delete implementation_;
-    }
+    // the destructor and move assignment live here so the implementation is complete
+    remoteProcess::~remoteProcess() = default;
 
-    remoteProcess::remoteProcess(remoteProcess &&other) noexcept
-        : implementation_(std::exchange(other.implementation_, nullptr)) {
-    }
+    remoteProcess::remoteProcess(remoteProcess &&other) noexcept = default;
 
-    remoteProcess &remoteProcess::operator=(remoteProcess &&other) noexcept {
-        if (this != &other) {
-            delete implementation_;
-            implementation_ = std::exchange(other.implementation_, nullptr);
-        }
-        return *this;
-    }
+    remoteProcess &remoteProcess::operator=(remoteProcess &&other) noexcept = default;
 
     bool remoteProcess::attach(const attachOptions &options) {
         return implementation_ != nullptr && implementation_->attach(options);
