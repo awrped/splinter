@@ -15,6 +15,20 @@ namespace splinter::engine::memory {
         std::wstring path;
     };
 
+    struct attachOptions {
+        // 0 searches by image name instead of attaching to a specific process
+        std::uint32_t pid = 0;
+        // empty falls back to javaw.exe and java.exe
+        std::vector<std::wstring> processNames;
+    };
+
+    struct processCandidate {
+        std::uint32_t pid = 0;
+        std::wstring name;
+        bool readable = false;
+        bool hasJvm = false;
+    };
+
     class remoteProcess {
     public:
         remoteProcess();
@@ -28,6 +42,8 @@ namespace splinter::engine::memory {
         remoteProcess(remoteProcess &&other) noexcept;
 
         remoteProcess &operator=(remoteProcess &&other) noexcept;
+
+        bool attach(const attachOptions &options = {});
 
         bool attachToJavaw();
 
@@ -57,4 +73,10 @@ namespace splinter::engine::memory {
     };
 
     std::string narrow(std::wstring_view value);
+
+    std::wstring widen(std::string_view value);
+
+    // every java looking process on the machine, so the caller can report why none
+    // of them could be attached to
+    [[nodiscard]] std::vector<processCandidate> enumerateJavaProcesses();
 }

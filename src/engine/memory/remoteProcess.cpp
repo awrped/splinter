@@ -177,13 +177,56 @@ namespace splinter::engine::memory {
         return result;
     }
 
+    namespace detail {
+        constexpr std::wstring_view jvmModule = L"jvm.dll";
+        constexpr std::wstring_view defaultProcessNames[] = {L"javaw.exe", L"java.exe"};
+
+        [[nodiscard]] bool matchesAnyName(std::wstring_view name, const std::vector<std::wstring> &wanted) {
+            if (wanted.empty()) {
+                for (const auto candidate: defaultProcessNames) {
+                    if (equalsIgnoreCase(name, candidate)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            for (const auto &candidate: wanted) {
+                if (equalsIgnoreCase(name, candidate)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    std::wstring widen(std::string_view value) {
+        if (value.empty()) {
+            return {};
+        }
+
+        const int required = MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0);
+        std::wstring result(static_cast<std::size_t>(required), L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), required);
+        return result;
+    }
+
     class remoteProcess::implementation {
     public:
-        static constexpr std::wstring_view targetProcessName = L"javaw.exe";
-        static constexpr std::wstring_view jvmModuleName = L"jvm.dll";
+        static constexpr std::wstring_view jvmModuleName = detail::jvmModule;
 
-        bool attachToJavaw() {
+        bool attach(const attachOptions &options) {
             close();
+
+            if (options.pid != 0) {
+                if (tryAttachProcess(options.pid, {})) {
+                    return true;
+                }
+
+                lastError_ = std::format(
+                    "Process {} could not be opened for reading, or does not have jvm.dll loaded", options.pid);
+                return false;
+            }
 
             detail::uniqueHandle snapshot(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
             if (!snapshot) {
@@ -199,12 +242,13 @@ namespace splinter::engine::memory {
             }
 
             do {
-                if (detail::equalsIgnoreCase(entry.szExeFile, targetProcessName) && tryAttachProcess(entry)) {
+                if (detail::matchesAnyName(entry.szExeFile, options.processNames) &&
+                    tryAttachProcess(entry.th32ProcessID, entry.szExeFile)) {
                     return true;
                 }
             } while (Process32NextW(snapshot.get(), &entry));
 
-            lastError_ = "Unable to find a readable javaw.exe process with jvm.dll loaded";
+            lastError_ = "Unable to find a readable java process with jvm.dll loaded";
             return false;
         }
 
@@ -332,20 +376,26 @@ namespace splinter::engine::memory {
             return handle;
         }
 
-        bool tryAttachProcess(const PROCESSENTRY32W &entry) {
+        bool tryAttachProcess(std::uint32_t pid, std::wstring name) {
             detail::uniqueHandle processHandle(
-                OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, entry.th32ProcessID));
+                OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, pid));
             if (!processHandle) {
                 return false;
             }
 
             moduleMap discoveredModules;
-            if (!enumerateModules(entry.th32ProcessID, discoveredModules) ||
+            if (!enumerateModules(pid, discoveredModules) ||
                 discoveredModules.findByName(jvmModuleName) == nullptr) {
                 return false;
             }
 
-            process_ = processInfo{entry.th32ProcessID, entry.szExeFile, detail::queryProcessPath(processHandle.get())};
+            auto path = detail::queryProcessPath(processHandle.get());
+            if (name.empty()) {
+                const auto separator = path.find_last_of(L"\\/");
+                name = separator == std::wstring::npos ? path : path.substr(separator + 1);
+            }
+
+            process_ = processInfo{pid, std::move(name), std::move(path)};
             modules_ = std::move(discoveredModules);
             processHandle_.reset(processHandle.release());
             lastError_.clear();
@@ -396,8 +446,12 @@ namespace splinter::engine::memory {
         return *this;
     }
 
+    bool remoteProcess::attach(const attachOptions &options) {
+        return implementation_ != nullptr && implementation_->attach(options);
+    }
+
     bool remoteProcess::attachToJavaw() {
-        return implementation_ != nullptr && implementation_->attachToJavaw();
+        return attach({});
     }
 
     void remoteProcess::close() noexcept {
@@ -452,5 +506,50 @@ namespace splinter::engine::memory {
 
     std::string remoteProcess::describeTarget() const {
         return implementation_ != nullptr ? implementation_->describeTarget() : "remoteProcess implementation missing";
+    }
+
+    std::vector<processCandidate> enumerateJavaProcesses() {
+        std::vector<processCandidate> candidates;
+
+        detail::uniqueHandle snapshot(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
+        if (!snapshot) {
+            return candidates;
+        }
+
+        PROCESSENTRY32W entry{};
+        entry.dwSize = sizeof(entry);
+        if (!Process32FirstW(snapshot.get(), &entry)) {
+            return candidates;
+        }
+
+        do {
+            if (!detail::matchesAnyName(entry.szExeFile, {})) {
+                continue;
+            }
+
+            processCandidate candidate{entry.th32ProcessID, entry.szExeFile, false, false};
+            detail::uniqueHandle processHandle(
+                OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, entry.th32ProcessID));
+            candidate.readable = static_cast<bool>(processHandle);
+
+            detail::uniqueHandle moduleSnapshot(
+                CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, entry.th32ProcessID));
+            if (moduleSnapshot) {
+                MODULEENTRY32W moduleEntry{};
+                moduleEntry.dwSize = sizeof(moduleEntry);
+                if (Module32FirstW(moduleSnapshot.get(), &moduleEntry)) {
+                    do {
+                        if (detail::equalsIgnoreCase(moduleEntry.szModule, detail::jvmModule)) {
+                            candidate.hasJvm = true;
+                            break;
+                        }
+                    } while (Module32NextW(moduleSnapshot.get(), &moduleEntry));
+                }
+            }
+
+            candidates.push_back(std::move(candidate));
+        } while (Process32NextW(snapshot.get(), &entry));
+
+        return candidates;
     }
 }
