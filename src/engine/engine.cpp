@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include "bytecode/bytecodePrinter.h"
 #include "classfile/descriptorParser.h"
 #include "classfile/signatureParser.h"
 #include "hotspot/classLoaderData.h"
@@ -13,10 +14,10 @@
 #include <format>
 
 namespace splinter::engine {
-    bool engine::initialize() {
+    bool engine::initialize(const memory::attachOptions &options) {
         lastError_.clear();
 
-        if (!process_.attachToJavaw()) {
+        if (!process_.attach(options)) {
             lastError_ = process_.lastError();
             return false;
         }
@@ -29,13 +30,14 @@ namespace splinter::engine {
         return true;
     }
 
-    bool engine::refreshIndexes() {
+    bool engine::refreshIndexes() const {
         classIndex_.clear();
         methodIndex_.clear();
         fieldIndex_.clear();
         classNameIndex_.clear();
         methodLookupIndex_.clear();
         fieldLookupIndex_.clear();
+        diagnostics_ = indexDiagnostics{};
         indexesReady_ = false;
         lastError_.clear();
 
@@ -44,29 +46,55 @@ namespace splinter::engine {
             const auto symbolReader = symbols();
             const auto klassAddresses = loadedKlassAddresses(0);
 
+            // a member that cannot be read must not cost the whole class, so every
+            // stage below fails on its own and the class is still indexed
+            const auto recordSkip = [this](std::size_t &counter, const std::exception &exception) {
+                ++counter;
+                if (diagnostics_.firstSkipReason.empty()) {
+                    diagnostics_.firstSkipReason = exception.what();
+                }
+            };
+
+            diagnostics_.klassesSeen = klassAddresses.size();
             for (const auto klassAddress: klassAddresses) {
+                classInfo classEntry{};
                 try {
                     hotspot::klassView klass(processMemory, vm_, klassAddress);
-
-                    classInfo classEntry{};
                     classEntry.address = klass.address();
                     classEntry.name = klass.name(symbolReader);
                     classEntry.kind = klass.isInstanceKlass() ? classKind::instance : classKind::nonInstance;
                     classEntry.layoutHelper = klass.layoutHelper();
+                } catch (const std::exception &exception) {
+                    // without a name the entry cannot be looked up, so drop it
+                    recordSkip(diagnostics_.klassesSkipped, exception);
+                    continue;
+                }
 
-                    if (classEntry.isInstanceKlass()) {
-                        hotspot::instanceKlassView instanceKlass(processMemory, vm_, klass.address());
+                if (classEntry.isInstanceKlass()) {
+                    const hotspot::instanceKlassView instanceKlass(processMemory, vm_, classEntry.address);
+                    std::optional<std::uint64_t> constantPoolAddress;
+
+                    try {
                         classEntry.javaFieldCount = instanceKlass.javaFieldCount();
                         classEntry.totalFieldCount = instanceKlass.totalFieldCount();
+                        constantPoolAddress = instanceKlass.constantsAddress();
+                    } catch (const std::exception &exception) {
+                        recordSkip(diagnostics_.membersSkipped, exception);
+                    }
 
-                        const auto constantPoolAddress = instanceKlass.constantsAddress();
-                        if (constantPoolAddress && *constantPoolAddress != 0) {
-                            const hotspot::constantPoolView constantPool(processMemory, vm_, *constantPoolAddress);
+                    if (constantPoolAddress && *constantPoolAddress != 0) {
+                        const hotspot::constantPoolView constantPool(processMemory, vm_, *constantPoolAddress);
 
-                            const auto methodAddresses = instanceKlass.methodAddresses();
-                            classEntry.methodCount = methodAddresses.size();
+                        std::vector<std::uint64_t> methodAddresses;
+                        try {
+                            methodAddresses = instanceKlass.methodAddresses();
+                        } catch (const std::exception &exception) {
+                            recordSkip(diagnostics_.membersSkipped, exception);
+                        }
+                        classEntry.methodCount = methodAddresses.size();
 
-                            for (const auto methodAddress: methodAddresses) {
+                        for (const auto methodAddress: methodAddresses) {
+                            try {
                                 hotspot::methodView method(processMemory, vm_, methodAddress);
 
                                 methodInfo methodEntry{};
@@ -86,8 +114,12 @@ namespace splinter::engine {
                                 methodLookupIndex_[std::format("{}#{}", methodEntry.className, methodEntry.name)]
                                         .push_back(methodIndex_.size());
                                 methodIndex_.push_back(std::move(methodEntry));
+                            } catch (const std::exception &exception) {
+                                recordSkip(diagnostics_.membersSkipped, exception);
                             }
+                        }
 
+                        try {
                             for (const auto &decodedField: instanceKlass.fields(symbolReader, 0)) {
                                 fieldInfo fieldEntry{};
                                 fieldEntry.classAddress = classEntry.address;
@@ -110,13 +142,14 @@ namespace splinter::engine {
                                         .push_back(fieldIndex_.size());
                                 fieldIndex_.push_back(std::move(fieldEntry));
                             }
+                        } catch (const std::exception &exception) {
+                            recordSkip(diagnostics_.membersSkipped, exception);
                         }
                     }
-
-                    classNameIndex_[classEntry.name].push_back(classIndex_.size());
-                    classIndex_.push_back(std::move(classEntry));
-                } catch (const std::exception &) {
                 }
+
+                classNameIndex_[classEntry.name].push_back(classIndex_.size());
+                classIndex_.push_back(std::move(classEntry));
             }
         } catch (const std::exception &exception) {
             lastError_ = exception.what();
@@ -126,11 +159,19 @@ namespace splinter::engine {
             classNameIndex_.clear();
             methodLookupIndex_.clear();
             fieldLookupIndex_.clear();
+            diagnostics_ = indexDiagnostics{};
             return false;
         }
 
+        diagnostics_.classes = classIndex_.size();
+        diagnostics_.methods = methodIndex_.size();
+        diagnostics_.fields = fieldIndex_.size();
         indexesReady_ = true;
         return true;
+    }
+
+    const indexDiagnostics &engine::diagnostics() const noexcept {
+        return diagnostics_;
     }
 
     const std::string &engine::lastError() const noexcept {
@@ -149,22 +190,6 @@ namespace splinter::engine {
         return memory::processMemory(process_);
     }
 
-    const analyzer::classAnalyzer &engine::classes() const noexcept {
-        return classAnalyzer_;
-    }
-
-    const analyzer::methodAnalyzer &engine::methods() const noexcept {
-        return methodAnalyzer_;
-    }
-
-    const analyzer::fieldAnalyzer &engine::fields() const noexcept {
-        return fieldAnalyzer_;
-    }
-
-    const analyzer::bytecodeAnalyzer &engine::bytecode() const noexcept {
-        return bytecodeAnalyzer_;
-    }
-
     hotspot::symbolTable engine::symbols() const noexcept {
         return hotspot::symbolTable(memory(), vm_);
     }
@@ -175,21 +200,36 @@ namespace splinter::engine {
     }
 
     const std::vector<classInfo> &engine::classIndex() const noexcept {
-        const auto ignored = ensureIndexes();
-        (void) ignored;
+        // an empty index after a failed refresh is reported through lastError
+        static_cast<void>(ensureIndexes());
         return classIndex_;
     }
 
     const std::vector<methodInfo> &engine::methodIndex() const noexcept {
-        const auto ignored = ensureIndexes();
-        (void) ignored;
+        static_cast<void>(ensureIndexes());
         return methodIndex_;
     }
 
     const std::vector<fieldInfo> &engine::fieldIndex() const noexcept {
-        const auto ignored = ensureIndexes();
-        (void) ignored;
+        static_cast<void>(ensureIndexes());
         return fieldIndex_;
+    }
+
+    std::vector<classInfo> engine::searchClasses(std::string_view pattern, std::size_t limit) const {
+        std::vector<classInfo> matches;
+        if (!ensureIndexes()) {
+            return matches;
+        }
+
+        for (const auto &entry: classIndex_) {
+            if (pattern.empty() || entry.name.find(pattern) != std::string::npos) {
+                matches.push_back(entry);
+                if (limit != 0 && matches.size() >= limit) {
+                    break;
+                }
+            }
+        }
+        return matches;
     }
 
     std::vector<classInfo> engine::findClasses(std::string_view className) const {
@@ -438,11 +478,54 @@ namespace splinter::engine {
         return describeMethod(method.address);
     }
 
-    bool engine::ensureIndexes() const {
-        if (indexesReady_) {
-            return true;
-        }
+    std::optional<disassembledMethod> engine::disassemble(std::uint64_t methodAddress) const {
+        try {
+            const auto processMemory = memory();
+            const auto symbolReader = symbols();
+            hotspot::methodView method(processMemory, vm_, methodAddress);
 
-        return const_cast<engine *>(this)->refreshIndexes();
+            const auto constMethodAddress = method.constMethodAddress();
+            if (!constMethodAddress || *constMethodAddress == 0) {
+                return std::nullopt;
+            }
+
+            hotspot::constMethodView constMethod(processMemory, vm_, *constMethodAddress);
+            const auto constantPoolAddress = constMethod.constantsAddress();
+            if (!constantPoolAddress || *constantPoolAddress == 0) {
+                return std::nullopt;
+            }
+
+            hotspot::constantPoolView constantPool(processMemory, vm_, *constantPoolAddress);
+
+            disassembledMethod result{};
+            result.methodAddress = method.address();
+            result.name = method.name(constantPool, symbolReader);
+            result.descriptor = method.signature(constantPool, symbolReader);
+            result.displaySignature = classfile::signatureParser::parseMethod(result.descriptor);
+
+            // hotspot only rewrites a method's operands once its holder is linked
+            if (const auto poolHolderAddress = constantPool.poolHolderAddress();
+                poolHolderAddress && *poolHolderAddress != 0) {
+                hotspot::instanceKlassView holder(processMemory, vm_, *poolHolderAddress);
+                result.className = holder.name(symbolReader);
+                result.rewritten = holder.isLinked().value_or(true);
+            }
+
+            result.instructions = bytecode::bytecodePrinter::decode(constMethod.bytecodes(),
+                                                                    constantPool,
+                                                                    symbolReader,
+                                                                    result.rewritten);
+            return result;
+        } catch (const std::exception &) {
+            return std::nullopt;
+        }
+    }
+
+    std::optional<disassembledMethod> engine::disassemble(const methodInfo &method) const {
+        return disassemble(method.address);
+    }
+
+    bool engine::ensureIndexes() const {
+        return indexesReady_ || refreshIndexes();
     }
 }

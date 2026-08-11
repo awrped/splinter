@@ -1,10 +1,8 @@
 #pragma once
 
-#include "analyzer/bytecodeAnalyzer.h"
-#include "analyzer/classAnalyzer.h"
-#include "analyzer/fieldAnalyzer.h"
-#include "analyzer/methodAnalyzer.h"
+#include "bytecode/bytecodePrinter.h"
 #include "classfile/accessFlags.h"
+#include "hotspot/fieldInfo.h"
 #include "hotspot/symbolTable.h"
 #include "hotspot/vmStructs.h"
 #include "memory/processMemory.h"
@@ -137,27 +135,45 @@ namespace splinter::engine {
         std::uint16_t contentionGroup = 0;
     };
 
+    // a method's bytecode plus the state that decided how its operands were read
+    struct disassembledMethod {
+        std::uint64_t methodAddress = 0;
+        std::string className;
+        std::string name;
+        std::string descriptor;
+        std::string displaySignature;
+        bool rewritten = true;
+        std::vector<bytecode::instructionInfo> instructions;
+    };
+
+    // how much of the class graph made it into the indexes
+    struct indexDiagnostics {
+        std::size_t klassesSeen = 0;
+        std::size_t klassesSkipped = 0;
+        std::size_t membersSkipped = 0;
+        std::size_t classes = 0;
+        std::size_t methods = 0;
+        std::size_t fields = 0;
+        std::string firstSkipReason;
+    };
+
     class engine {
     public:
-        bool initialize();
+        bool initialize(const memory::attachOptions &options = {});
 
-        bool refreshIndexes();
+        // rebuilds the class, method and field indexes, they are also built lazily on
+        // the first query
+        bool refreshIndexes() const;
 
         [[nodiscard]] const std::string &lastError() const noexcept;
+
+        [[nodiscard]] const indexDiagnostics &diagnostics() const noexcept;
 
         [[nodiscard]] const memory::remoteProcess &process() const noexcept;
 
         [[nodiscard]] const hotspot::vmStructs &vm() const noexcept;
 
         [[nodiscard]] memory::processMemory memory() const noexcept;
-
-        [[nodiscard]] const analyzer::classAnalyzer &classes() const noexcept;
-
-        [[nodiscard]] const analyzer::methodAnalyzer &methods() const noexcept;
-
-        [[nodiscard]] const analyzer::fieldAnalyzer &fields() const noexcept;
-
-        [[nodiscard]] const analyzer::bytecodeAnalyzer &bytecode() const noexcept;
 
         [[nodiscard]] hotspot::symbolTable symbols() const noexcept;
 
@@ -170,6 +186,9 @@ namespace splinter::engine {
         [[nodiscard]] const std::vector<fieldInfo> &fieldIndex() const noexcept;
 
         [[nodiscard]] std::vector<classInfo> findClasses(std::string_view className) const;
+
+        // substring match over every loaded class name, for interactive lookups
+        [[nodiscard]] std::vector<classInfo> searchClasses(std::string_view pattern, std::size_t limit = 0) const;
 
         [[nodiscard]] std::optional<classInfo> findClass(std::string_view className) const;
 
@@ -198,22 +217,26 @@ namespace splinter::engine {
 
         [[nodiscard]] std::optional<methodDetails> describeMethod(const methodInfo &method) const;
 
+        // decodes a method's live bytecode, picking the operand encoding from the
+        // holder's link state
+        [[nodiscard]] std::optional<disassembledMethod> disassemble(std::uint64_t methodAddress) const;
+
+        [[nodiscard]] std::optional<disassembledMethod> disassemble(const methodInfo &method) const;
+
     private:
         [[nodiscard]] bool ensureIndexes() const;
 
-        std::unordered_map<std::string, std::vector<std::size_t> > classNameIndex_;
-        std::unordered_map<std::string, std::vector<std::size_t> > methodLookupIndex_;
-        std::unordered_map<std::string, std::vector<std::size_t> > fieldLookupIndex_;
-        std::vector<classInfo> classIndex_;
-        std::vector<methodInfo> methodIndex_;
-        std::vector<fieldInfo> fieldIndex_;
-        bool indexesReady_ = false;
-        std::string lastError_;
+        // the indexes are built on first use, so every query stays const
+        mutable std::unordered_map<std::string, std::vector<std::size_t> > classNameIndex_;
+        mutable std::unordered_map<std::string, std::vector<std::size_t> > methodLookupIndex_;
+        mutable std::unordered_map<std::string, std::vector<std::size_t> > fieldLookupIndex_;
+        mutable std::vector<classInfo> classIndex_;
+        mutable std::vector<methodInfo> methodIndex_;
+        mutable std::vector<fieldInfo> fieldIndex_;
+        mutable indexDiagnostics diagnostics_{};
+        mutable bool indexesReady_ = false;
+        mutable std::string lastError_;
         memory::remoteProcess process_;
         hotspot::vmStructs vm_;
-        analyzer::classAnalyzer classAnalyzer_{};
-        analyzer::methodAnalyzer methodAnalyzer_{};
-        analyzer::fieldAnalyzer fieldAnalyzer_{};
-        analyzer::bytecodeAnalyzer bytecodeAnalyzer_{};
     };
 }
