@@ -158,7 +158,6 @@ namespace splinter::engine::bytecode {
                 case 0xbd:
                 case 0xc0:
                 case 0xc1:
-                case 0xc5:
                 case 0xc6:
                 case 0xc7:
                 case 0xcb:
@@ -189,6 +188,8 @@ namespace splinter::engine::bytecode {
                 case 0xc8:
                 case 0xc9:
                     return 5;
+                // multianewarray carries a u2 pool index plus a u1 dimension count
+                case 0xc5:
                 case 0xdd:
                 case 0xde:
                 case 0xdf:
