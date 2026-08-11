@@ -127,6 +127,7 @@ namespace splinter::engine::bytecode {
                 case 0xe0:
                 case 0xe2:
                 case 0xe6:
+                case 0xed: // nofast_iload
                     return 2;
                 case 0x11:
                 case 0x13:
@@ -180,6 +181,9 @@ namespace splinter::engine::bytecode {
                 case 0xe3:
                 case 0xe7:
                 case 0xe9:
+                // the nofast bytecodes keep the operand shape of the ones they replace
+                case 0xea: // nofast_getfield
+                case 0xeb: // nofast_putfield
                     return 3;
                 case 0x84:
                     return 3;
@@ -298,7 +302,9 @@ namespace splinter::engine::bytecode {
                 case 0xd8:
                 case 0xd9:
                 case 0xda:
-                case 0xdb: {
+                case 0xdb:
+                case 0xea:
+                case 0xeb: {
                     if (!rewritten) {
                         return classfilePoolOperand(constantPool, symbols, readU16(code, index + 1));
                     }
@@ -430,6 +436,7 @@ namespace splinter::engine::bytecode {
                 case 0xa9:
                 case 0xe0:
                 case 0xe2:
+                case 0xed:
                     return "local=" + std::to_string(byteAt(code, index + 1));
                 case 0xe1:
                     return joinWithSpaces("local0=" + std::to_string(byteAt(code, index + 1)),
