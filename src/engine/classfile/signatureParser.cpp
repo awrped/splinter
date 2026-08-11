@@ -11,31 +11,25 @@ namespace splinter::engine::classfile {
         }
 
         std::ostringstream stream;
-        std::size_t index = 1;
         stream << '(';
+
+        std::size_t index = 1;
         bool first = true;
         while (index < descriptor.size() && descriptor[index] != ')') {
+            const std::size_t start = index;
+            const auto parameter = descriptorParser::parseNext(descriptor, index);
+            if (index == start) {
+                // nothing was consumed, the descriptor is malformed
+                break;
+            }
+
             if (!first) {
                 stream << ", ";
             }
-            const std::size_t start = index;
-            stream << descriptorParser::parseField(descriptor.substr(start));
-            if (descriptor[start] == 'L') {
-                index = descriptor.find(';', start) + 1;
-            } else if (descriptor[start] == '[') {
-                while (descriptor[index] == '[') {
-                    ++index;
-                }
-                if (descriptor[index] == 'L') {
-                    index = descriptor.find(';', index) + 1;
-                } else {
-                    ++index;
-                }
-            } else {
-                ++index;
-            }
+            stream << parameter;
             first = false;
         }
+
         stream << ')';
 
         if (index < descriptor.size() && descriptor[index] == ')') {

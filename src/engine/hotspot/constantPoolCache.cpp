@@ -112,7 +112,7 @@ namespace splinter::engine::hotspot {
         }
 
         const auto length = memory_.read<std::int32_t>(*mapAddress + lengthField->offset);
-        if (objectIndex >= static_cast<std::uint16_t>(length)) {
+        if (length <= 0 || static_cast<std::int32_t>(objectIndex) >= length) {
             return std::nullopt;
         }
 
@@ -128,7 +128,7 @@ namespace splinter::engine::hotspot {
         const auto cacheSize = vm_->types().sizeOf("ConstantPoolCache");
         const auto entrySize = vm_->types().sizeOf("ConstantPoolCacheEntry");
         const auto entryCount = oldEntryCount();
-        if (!cacheSize || !entrySize || !entryCount || entryIndex >= static_cast<std::uint16_t>(*entryCount)) {
+        if (!cacheSize || !entrySize || !entryCount || static_cast<std::int32_t>(entryIndex) >= *entryCount) {
             return std::nullopt;
         }
 
@@ -178,7 +178,7 @@ namespace splinter::engine::hotspot {
         }
 
         const auto length = memory_.read<std::int32_t>(arrayAddress + lengthField->offset);
-        if (entryIndex >= static_cast<std::uint16_t>(length)) {
+        if (length <= 0 || static_cast<std::int32_t>(entryIndex) >= length) {
             return std::nullopt;
         }
 

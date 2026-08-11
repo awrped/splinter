@@ -455,16 +455,20 @@ namespace splinter::engine::hotspot {
     constantPoolView::decodeAll(const symbolTable &symbols, std::size_t limit) const {
         std::vector<decodedConstantPoolEntry> entries;
         const auto cpLength = length();
-        if (!cpLength) {
+        if (!cpLength || *cpLength <= 1) {
             return entries;
         }
 
-        const std::size_t end = limit == 0
-                                    ? static_cast<std::size_t>(*cpLength)
-                                    : std::min(limit, static_cast<std::size_t>(*cpLength));
-        entries.reserve(end > 0 ? end - 1 : 0);
+        // limit counts entries, the same way fieldInfoView::decodeAll reads it
+        const auto poolLength = static_cast<std::size_t>(*cpLength);
+        const std::size_t decodable = poolLength - 1;
+        entries.reserve(limit == 0 ? decodable : std::min(limit, decodable));
 
-        for (std::size_t index = 1; index < end; ++index) {
+        for (std::size_t index = 1; index < poolLength; ++index) {
+            if (limit != 0 && entries.size() >= limit) {
+                break;
+            }
+
             const auto decoded = decodeAt(static_cast<std::int32_t>(index), symbols);
             entries.push_back(decoded);
             if (decoded.tag == constantTag::longValue || decoded.tag == constantTag::doubleValue) {

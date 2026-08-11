@@ -111,6 +111,7 @@ namespace splinter::engine::hotspot {
 
         [[nodiscard]] decodedConstantPoolEntry decodeAt(std::int32_t index, const symbolTable &symbols) const;
 
+        // limit caps the number of decoded entries, 0 decodes the whole pool
         [[nodiscard]] std::vector<decodedConstantPoolEntry> decodeAll(const symbolTable &symbols,
                                                                       std::size_t limit = 0) const;
 
