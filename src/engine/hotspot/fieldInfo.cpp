@@ -156,6 +156,15 @@ namespace splinter::engine::hotspot {
             field.contentionGroup = static_cast<std::uint16_t>(reader.nextUint());
         }
 
+        if (field.flags.isInjected()) {
+            // an injected field has no constant pool entries, its name and signature
+            // are vmSymbols ids. reading them as pool indexes lands on whatever the
+            // slot happens to hold
+            field.name = symbols.readVmSymbol(field.nameIndex);
+            field.signature = symbols.readVmSymbol(field.signatureIndex);
+            return field;
+        }
+
         if (field.nameIndex != 0) {
             field.name = constantPool.utf8At(field.nameIndex, symbols);
         }

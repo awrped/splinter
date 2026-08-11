@@ -21,4 +21,22 @@ namespace splinter::engine::hotspot {
         return std::string(reinterpret_cast<const char *>(buffer.data()),
                            reinterpret_cast<const char *>(buffer.data()) + buffer.size());
     }
+
+    std::string symbolTable::readVmSymbol(std::uint32_t symbolId) const {
+        const vmStructEntry *table = vm_->findField("Symbol", "_vm_symbols[0]");
+        const auto firstSid = vm_->constants().findInt("vmSymbols::FIRST_SID");
+        const auto sidLimit = vm_->constants().findInt("vmSymbols::SID_LIMIT");
+        if (table == nullptr || !table->isStatic || !firstSid || !sidLimit) {
+            return {};
+        }
+
+        const auto id = static_cast<std::int32_t>(symbolId);
+        if (id < *firstSid || id >= *sidLimit) {
+            return {};
+        }
+
+        const auto symbolAddress = memory_.read<std::uint64_t>(
+            table->address + static_cast<std::uint64_t>(id) * sizeof(std::uint64_t));
+        return readSymbol(symbolAddress);
+    }
 }
